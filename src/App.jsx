@@ -23,6 +23,57 @@ const PowerballGenerator = () => {
     return Math.max(min, Math.min(max, n));
   };
 
+  const validateNumberList = (input, min, max) => {
+    const raw = String(input ?? "").trim();
+    if (!raw) return { numbers: [], errors: [] };
+
+    const parts = raw
+      .split(",")
+      .map((p) => p.trim())
+      .filter(Boolean);
+
+    const seen = new Set();
+    const duplicates = new Set();
+    const invalidTokens = [];
+    const outOfRange = [];
+    const numbers = [];
+
+    for (const part of parts) {
+      const n = Number.parseInt(part, 10);
+      if (!Number.isFinite(n)) {
+        invalidTokens.push(part);
+        continue;
+      }
+      if (n < min || n > max) {
+        outOfRange.push(n);
+        continue;
+      }
+      if (seen.has(n)) {
+        duplicates.add(n);
+        continue;
+      }
+      seen.add(n);
+      numbers.push(n);
+    }
+
+    const errors = [];
+    if (invalidTokens.length > 0) {
+      errors.push(`Invalid entries: ${invalidTokens.join(", ")}`);
+    }
+    if (outOfRange.length > 0) {
+      errors.push(
+        `Out of range (${min}–${max}): ${Array.from(new Set(outOfRange)).join(
+          ", "
+        )}`
+      );
+    }
+    if (duplicates.size > 0) {
+      errors.push(`Duplicate numbers: ${Array.from(duplicates).join(", ")}`);
+    }
+
+    return { numbers, errors };
+  };
+
   const fallbackDraws = useMemo(() => {
     return rawData
       .map(([winningNumbers, multiplier]) => {
@@ -142,17 +193,40 @@ const PowerballGenerator = () => {
     return availableNums[availableNums.length - 1];
   };
 
-  const generatePicks = (count, randomnessPct) => {
+  const generatePicks = (
+    count,
+    randomnessPct,
+    lockedMainNums,
+    pbLockedNums
+  ) => {
     const safeCount = clampInt(count, 1, 50);
     const alpha = clampNumber(randomnessPct, 0, 100) / 100;
     const picks = [];
 
+    const lockedMain = (lockedMainNums || []).slice(0, 5);
+    const powerballCandidates = pbLockedNums || [];
+
     for (let i = 0; i < safeCount; i++) {
+      // If the user provided PB-eligible locked numbers (1..26), pick the PB
+      // from that set (so it can vary across lines).
+      const lockedPowerballCandidate =
+        powerballCandidates.length > 0
+          ? pickOneBlended(powerballCandidates, pbBaseWeights, alpha)
+          : null;
+
       const availableMain = [];
       for (let n = 1; n <= 69; n++) availableMain.push(n);
 
       const main = [];
-      for (let j = 0; j < 5; j++) {
+      for (const forced of lockedMain) {
+        if (!main.includes(forced)) {
+          main.push(forced);
+          const idx = availableMain.indexOf(forced);
+          if (idx !== -1) availableMain.splice(idx, 1);
+        }
+      }
+
+      while (main.length < 5) {
         const selected = pickOneBlended(availableMain, mainBaseWeights, alpha);
         main.push(selected);
         availableMain.splice(availableMain.indexOf(selected), 1);
@@ -160,7 +234,9 @@ const PowerballGenerator = () => {
 
       const availablePb = [];
       for (let n = 1; n <= 26; n++) availablePb.push(n);
-      const powerball = pickOneBlended(availablePb, pbBaseWeights, alpha);
+      const powerball =
+        lockedPowerballCandidate ??
+        pickOneBlended(availablePb, pbBaseWeights, alpha);
 
       picks.push({
         main: main.sort((a, b) => a - b),
@@ -173,12 +249,161 @@ const PowerballGenerator = () => {
 
   const [numLines, setNumLines] = useState(5);
   const [randomness, setRandomness] = useState(70);
-  const [picks, setPicks] = useState(() => generatePicks(5, 70));
+  const [mainLockedInput, setMainLockedInput] = useState("");
+  const [powerballLockedInput, setPowerballLockedInput] = useState("");
+
+  const mainLockedValidation = useMemo(() => {
+    return validateNumberList(mainLockedInput, 1, 69);
+  }, [mainLockedInput]);
+  const powerballLockedValidation = useMemo(() => {
+    return validateNumberList(powerballLockedInput, 1, 26);
+  }, [powerballLockedInput]);
+
+  const mainLocked = mainLockedValidation.numbers;
+  const powerballLocked = powerballLockedValidation.numbers;
+
+  const lockedError = useMemo(() => {
+    if (mainLockedValidation.errors.length > 0)
+      return "Fix Main locked errors.";
+    if (powerballLockedValidation.errors.length > 0)
+      return "Fix Powerball locked errors.";
+    if (mainLocked.length > 5)
+      return "Main locked can include at most 5 numbers (since there are only 5 main balls).";
+    return null;
+  }, [
+    mainLocked,
+    mainLockedValidation.errors,
+    powerballLockedValidation.errors,
+  ]);
+
+  const [picks, setPicks] = useState(() => generatePicks(5, 70, [], []));
+  const [editing, setEditing] = useState(null);
+  const [editValue, setEditValue] = useState("");
+  const [editError, setEditError] = useState(null);
+  const [copied, setCopied] = useState(null);
   const [showStats, setShowStats] = useState(false);
 
-  useEffect(() => {
-    setPicks(generatePicks(numLines, randomness));
-  }, [numLines, randomness, mainBaseWeights, pbBaseWeights]);
+  const formatPickLine = (pick) => {
+    const main = pick.main.map((n) => String(n).padStart(2, "0")).join(" ");
+    const pb = String(pick.powerball).padStart(2, "0");
+    return `${main} ${pb}`;
+  };
+
+  const copyToClipboard = async (text) => {
+    if (navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+
+    // Fallback for older browsers.
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "true");
+    textarea.style.position = "absolute";
+    textarea.style.left = "-9999px";
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand("copy");
+    document.body.removeChild(textarea);
+  };
+
+  const handleCopyLine = async (lineIdx) => {
+    const pick = picks[lineIdx];
+    if (!pick) return;
+    await copyToClipboard(formatPickLine(pick));
+    setCopied(`line:${lineIdx}`);
+    setTimeout(() => setCopied(null), 1200);
+  };
+
+  const handleCopyAll = async () => {
+    const text = picks.map(formatPickLine).join("\n");
+    await copyToClipboard(text);
+    setCopied("all");
+    setTimeout(() => setCopied(null), 1200);
+  };
+
+  const beginEdit = (lineIdx, kind, indexOrNull) => {
+    setEditError(null);
+    setEditing({ lineIdx, kind, index: indexOrNull });
+    const current =
+      kind === "pb"
+        ? picks[lineIdx]?.powerball
+        : picks[lineIdx]?.main?.[indexOrNull];
+    setEditValue(current != null ? String(current) : "");
+  };
+
+  const cancelEdit = () => {
+    setEditing(null);
+    setEditValue("");
+    setEditError(null);
+  };
+
+  const commitEdit = () => {
+    if (!editing) return;
+    const { lineIdx, kind, index } = editing;
+
+    const next = Number.parseInt(editValue, 10);
+    if (!Number.isFinite(next)) {
+      setEditError("Enter a number.");
+      return;
+    }
+
+    if (kind === "pb") {
+      if (next < 1 || next > 26) {
+        setEditError("Powerball must be 1–26.");
+        return;
+      }
+      if (powerballLocked.length > 0 && !powerballLocked.includes(next)) {
+        setEditError("Powerball must be one of your Powerball locked numbers.");
+        return;
+      }
+    } else {
+      if (next < 1 || next > 69) {
+        setEditError("Main numbers must be 1–69.");
+        return;
+      }
+
+      const currentPick = picks[lineIdx];
+      if (currentPick) {
+        const otherNums = currentPick.main.filter((_, i) => i !== index);
+        if (otherNums.includes(next)) {
+          setEditError("That number is already in this line.");
+          return;
+        }
+
+        const nextMain = [...otherNums, next].sort((a, b) => a - b);
+        if (mainLocked.length > 0) {
+          for (const locked of mainLocked) {
+            if (!nextMain.includes(locked)) {
+              setEditError(
+                "This line must include all your Main locked numbers. Remove it from Main locked first if you want to change it."
+              );
+              return;
+            }
+          }
+        }
+      }
+    }
+
+    setPicks((prev) => {
+      const copy = prev.map((p) => ({ ...p, main: [...p.main] }));
+      const pick = copy[lineIdx];
+      if (!pick) return prev;
+
+      if (kind === "pb") {
+        pick.powerball = next;
+        return copy;
+      }
+
+      pick.main[index] = next;
+      pick.main.sort((a, b) => a - b);
+      return copy;
+    });
+
+    setEditing(null);
+    setEditValue("");
+    setEditError(null);
+  };
 
   const topMain = Object.entries(analysis.mainFreq)
     .sort((a, b) => b[1] - a[1])
@@ -196,13 +421,18 @@ const PowerballGenerator = () => {
         </h1>
         <p className="text-gray-600 mb-4">
           Generates picks using a blend of historical frequency weighting and
-          randomness (higher randomness = closer to uniform random). Data is
-          nightly-synced (falls back to embedded data in local dev).
+          randomness (higher randomness = closer to uniform random). You can
+          also lock numbers to be included in every pick. Data is nightly-synced
+          (falls back to embedded data in local dev).
           {drawsUpdatedAt && (
             <span className="inline-block ml-2 text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
               Updated <span className="font-medium">{drawsUpdatedAt}</span>
             </span>
           )}
+        </p>
+
+        <p className="text-gray-600 mb-4">
+          If you win, please give me %1 of the jackpot.
         </p>
 
         <div className="flex flex-col gap-3 mb-4">
@@ -227,7 +457,21 @@ const PowerballGenerator = () => {
             </div>
 
             <button
-              onClick={() => setPicks(generatePicks(numLines, randomness))}
+              onClick={() => {
+                if (lockedError) return;
+                setEditing(null);
+                setEditValue("");
+                setEditError(null);
+                setCopied(null);
+                setPicks(
+                  generatePicks(
+                    numLines,
+                    randomness,
+                    mainLocked,
+                    powerballLocked
+                  )
+                );
+              }}
               className="bg-red-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-red-700 transition"
             >
               🎲 Generate New Picks
@@ -271,36 +515,200 @@ const PowerballGenerator = () => {
             numbers are always unique within a line; duplicate lines can still
             happen (especially at higher randomness).
           </p>
+
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <label
+              htmlFor="mainLockedNumbers"
+              className="font-semibold text-gray-700 whitespace-nowrap"
+            >
+              Main locked
+            </label>
+            <input
+              id="mainLockedNumbers"
+              type="text"
+              value={mainLockedInput}
+              onChange={(e) => setMainLockedInput(e.target.value)}
+              placeholder="e.g. 13, 24"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
+            />
+          </div>
+
+          {mainLockedValidation.errors.length > 0 ? (
+            <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              {mainLockedValidation.errors.map((e) => (
+                <div key={e}>{e}</div>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <label
+              htmlFor="powerballLockedNumbers"
+              className="font-semibold text-gray-700 whitespace-nowrap"
+            >
+              Powerball locked
+            </label>
+            <input
+              id="powerballLockedNumbers"
+              type="text"
+              value={powerballLockedInput}
+              onChange={(e) => setPowerballLockedInput(e.target.value)}
+              placeholder="e.g. 13, 24"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
+            />
+          </div>
+
+          {powerballLockedValidation.errors.length > 0 ? (
+            <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              {powerballLockedValidation.errors.map((e) => (
+                <div key={e}>{e}</div>
+              ))}
+            </div>
+          ) : null}
+
+          {lockedError ? (
+            <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              {lockedError}
+            </div>
+          ) : mainLocked.length > 0 || powerballLocked.length > 0 ? (
+            <div className="text-xs text-gray-600">
+              Main locked:{" "}
+              <span className="font-medium">
+                {mainLocked.length > 0 ? mainLocked.join(", ") : "—"}
+              </span>
+              {" • "}
+              Powerball locked:{" "}
+              <span className="font-medium">
+                {powerballLocked.length > 0 ? powerballLocked.join(", ") : "—"}
+              </span>
+            </div>
+          ) : null}
         </div>
 
         <div className="space-y-4">
-          <h2 className="text-xl font-bold text-gray-800">
-            Your {picks.length} Powerball Picks:
-          </h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-xl font-bold text-gray-800">
+              Your {picks.length} Powerball Picks:
+            </h2>
+            <button
+              type="button"
+              onClick={handleCopyAll}
+              className="text-sm font-semibold px-3 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 transition"
+            >
+              Copy all
+              {copied === "all" ? " ✓" : ""}
+            </button>
+          </div>
           {picks.map((pick, idx) => (
             <div
               key={idx}
               className="bg-linear-to-r from-gray-100 to-gray-50 p-4 rounded-lg border-2 border-gray-200"
             >
-              <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-3 flex-wrap justify-between">
                 <span className="font-bold text-gray-700">
                   Pick #{idx + 1}:
                 </span>
-                <div className="flex gap-2">
-                  {pick.main.map((num, i) => (
-                    <div
-                      key={i}
-                      className="w-12 h-12 bg-white rounded-full flex items-center justify-center font-bold text-gray-800 border-2 border-gray-300 shadow"
-                    >
-                      {num.toString().padStart(2, "0")}
-                    </div>
-                  ))}
-                </div>
-                <span className="text-gray-500 font-semibold">+</span>
-                <div className="w-12 h-12 bg-red-600 rounded-full flex items-center justify-center font-bold text-white border-2 border-red-700 shadow-lg">
-                  {pick.powerball.toString().padStart(2, "0")}
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="flex gap-2">
+                    {pick.main.map((num, i) => {
+                      const isEditing =
+                        editing?.lineIdx === idx &&
+                        editing?.kind === "main" &&
+                        editing?.index === i;
+
+                      if (isEditing) {
+                        return (
+                          <div
+                            key={i}
+                            className="w-12 h-12 bg-white rounded-full flex items-center justify-center border-2 border-red-300 shadow"
+                          >
+                            <input
+                              autoFocus
+                              type="number"
+                              min={1}
+                              max={69}
+                              inputMode="numeric"
+                              value={editValue}
+                              onChange={(e) => setEditValue(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") commitEdit();
+                                if (e.key === "Escape") cancelEdit();
+                              }}
+                              onBlur={cancelEdit}
+                              className="w-10 text-center font-bold text-gray-800 focus:outline-none"
+                            />
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <button
+                          key={i}
+                          type="button"
+                          title="Click to edit"
+                          onClick={() => beginEdit(idx, "main", i)}
+                          className="w-12 h-12 bg-white rounded-full flex items-center justify-center font-bold text-gray-800 border-2 border-gray-300 shadow hover:border-gray-400 transition"
+                        >
+                          {num.toString().padStart(2, "0")}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <span className="text-gray-500 font-semibold">+</span>
+
+                  {(() => {
+                    const isEditingPb =
+                      editing?.lineIdx === idx && editing?.kind === "pb";
+                    if (isEditingPb) {
+                      return (
+                        <div className="w-12 h-12 bg-red-600 rounded-full flex items-center justify-center border-2 border-red-700 shadow-lg">
+                          <input
+                            autoFocus
+                            type="number"
+                            min={1}
+                            max={26}
+                            inputMode="numeric"
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") commitEdit();
+                              if (e.key === "Escape") cancelEdit();
+                            }}
+                            onBlur={cancelEdit}
+                            className="w-10 text-center font-bold text-white bg-transparent focus:outline-none"
+                          />
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <button
+                        type="button"
+                        title="Click to edit"
+                        onClick={() => beginEdit(idx, "pb", null)}
+                        className="w-12 h-12 bg-red-600 rounded-full flex items-center justify-center font-bold text-white border-2 border-red-700 shadow-lg hover:bg-red-700 transition"
+                      >
+                        {pick.powerball.toString().padStart(2, "0")}
+                      </button>
+                    );
+                  })()}
+
+                  <button
+                    type="button"
+                    onClick={() => handleCopyLine(idx)}
+                    className="text-sm font-semibold px-3 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 transition"
+                    title="Copy this line"
+                  >
+                    Copy
+                    {copied === `line:${idx}` ? " ✓" : ""}
+                  </button>
                 </div>
               </div>
+
+              {editing?.lineIdx === idx && editError ? (
+                <div className="mt-2 text-sm text-red-700">{editError}</div>
+              ) : null}
             </div>
           ))}
         </div>
