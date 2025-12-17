@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="pb" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ef4444"/>
+      <stop offset="1" stop-color="#b91c1c"/>
+    </linearGradient>
+    <filter id="s" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <!-- Dark base -->
+  <rect width="64" height="64" rx="14" fill="#020617"/>
+
+  <!-- White main ball -->
+  <g filter="url(#s)">
+    <circle cx="24" cy="34" r="16" fill="#ffffff"/>
+    <circle cx="24" cy="34" r="16" fill="none" stroke="#ffffff" stroke-opacity="0.22"/>
+  </g>
+
+  <!-- Red powerball -->
+  <g filter="url(#s)">
+    <circle cx="44" cy="28" r="14" fill="url(#pb)"/>
+    <circle cx="44" cy="28" r="14" fill="none" stroke="#fecaca" stroke-opacity="0.5"/>
+  </g>
+
+  <!-- PB letters (kept big for small sizes) -->
+  <text x="44" y="33" text-anchor="middle" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial" font-size="12" font-weight="900" fill="#ffffff">
+    PB
+  </text>
+</svg>
+
+
