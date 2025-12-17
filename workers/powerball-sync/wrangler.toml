@@ -1,0 +1,25 @@
+name = "powerball-sync"
+main = "src/index.js"
+compatibility_date = "2025-12-17"
+
+# Nightly sync.
+# Cloudflare cron triggers use UTC. 11:59pm PST (UTC-8) == 07:59 UTC.
+# Note: during PDT (UTC-7), 11:59pm local would be 06:59 UTC.
+[triggers]
+crons = ["59 7 * * *"]
+
+# Bind a KV namespace that stores the normalized draw list.
+[[kv_namespaces]]
+binding = "POWERBALL_KV"
+id = "f7ecf32c69964911837b64de927b3b32"
+
+# Optional override for the upstream JSON source.
+[vars]
+POWERBALL_SOURCE_URL = "https://data.ny.gov/api/views/d6yy-54nr/rows.json?accessType=DOWNLOAD"
+
+[observability]
+[observability.logs]
+enabled = false
+head_sampling_rate = 1
+invocation_logs = true
+persist = true
