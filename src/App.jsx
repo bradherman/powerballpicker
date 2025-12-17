@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 const PowerballGenerator = () => {
   const rawData = [
@@ -1896,10 +1896,17 @@ const PowerballGenerator = () => {
     return { mainFreq, pbFreq };
   }, []);
 
-  const generatePicks = () => {
+  const clampInt = (value, min, max) => {
+    const n = Number.parseInt(value, 10);
+    if (Number.isNaN(n)) return min;
+    return Math.max(min, Math.min(max, n));
+  };
+
+  const generatePicks = (count) => {
+    const safeCount = clampInt(count, 1, 50);
     const picks = [];
 
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < safeCount; i++) {
       const mainNums = new Set();
       while (mainNums.size < 5) {
         const num = Math.floor(Math.random() * 69) + 1;
@@ -1917,8 +1924,13 @@ const PowerballGenerator = () => {
     return picks;
   };
 
-  const [picks, setPicks] = useState(generatePicks());
+  const [numLines, setNumLines] = useState(5);
+  const [picks, setPicks] = useState(() => generatePicks(5));
   const [showStats, setShowStats] = useState(false);
+
+  useEffect(() => {
+    setPicks(generatePicks(numLines));
+  }, [numLines]);
 
   const topMain = Object.entries(analysis.mainFreq)
     .sort((a, b) => b[1] - a[1])
@@ -1929,7 +1941,7 @@ const PowerballGenerator = () => {
     .slice(0, 5);
 
   return (
-    <div className="p-6 max-w-4xl mx-auto bg-gradient-to-br from-red-50 to-white min-h-screen">
+    <div className="p-6 max-w-4xl mx-auto bg-linear-to-br from-red-50 to-white min-h-screen">
       <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
         <h1 className="text-3xl font-bold text-red-600 mb-2">
           🎱 Powerball Number Generator
@@ -1938,21 +1950,42 @@ const PowerballGenerator = () => {
           Based on historical data analysis from 2010-2024
         </p>
 
-        <button
-          onClick={() => setPicks(generatePicks())}
-          className="bg-red-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-red-700 transition mb-4"
-        >
-          🎲 Generate New Picks
-        </button>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <label
+              htmlFor="numLines"
+              className="font-semibold text-gray-700 whitespace-nowrap"
+            >
+              Number of lines
+            </label>
+            <input
+              id="numLines"
+              type="number"
+              min={1}
+              max={50}
+              step={1}
+              value={numLines}
+              onChange={(e) => setNumLines(clampInt(e.target.value, 1, 50))}
+              className="w-24 rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
+            />
+          </div>
+
+          <button
+            onClick={() => setPicks(generatePicks(numLines))}
+            className="bg-red-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-red-700 transition"
+          >
+            🎲 Generate New Picks
+          </button>
+        </div>
 
         <div className="space-y-4">
           <h2 className="text-xl font-bold text-gray-800">
-            Your 5 Powerball Picks:
+            Your {picks.length} Powerball Picks:
           </h2>
           {picks.map((pick, idx) => (
             <div
               key={idx}
-              className="bg-gradient-to-r from-gray-100 to-gray-50 p-4 rounded-lg border-2 border-gray-200"
+              className="bg-linear-to-r from-gray-100 to-gray-50 p-4 rounded-lg border-2 border-gray-200"
             >
               <div className="flex items-center gap-3 flex-wrap">
                 <span className="font-bold text-gray-700">
@@ -1978,7 +2011,7 @@ const PowerballGenerator = () => {
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow-lg p-6">
+      <div className="bg-linear-to-br from-white to-gray-50 rounded-lg shadow-lg p-6">
         <button
           onClick={() => setShowStats(!showStats)}
           className="w-full text-left font-semibold text-lg text-gray-800 flex justify-between items-center"
@@ -2023,7 +2056,7 @@ const PowerballGenerator = () => {
               </div>
             </div>
 
-            <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200 mt-4">
+            <div className="bg-linear-to-br from-yellow-50 to-gray-50 p-4 rounded-lg border border-yellow-200 mt-4">
               <p className="text-sm text-gray-700">
                 <strong>⚠️ Important Note:</strong> These picks are randomly
                 generated. While based on historical data analysis, every
