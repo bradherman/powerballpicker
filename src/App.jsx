@@ -96,22 +96,75 @@ const PowerballGenerator = () => {
     return { mainFreq, pbFreq };
   }, [draws]);
 
-  const generatePicks = (count) => {
+  const clampNumber = (value, min, max) => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return min;
+    return Math.max(min, Math.min(max, n));
+  };
+
+  const mainBaseWeights = useMemo(() => {
+    const weights = new Map();
+    for (let n = 1; n <= 69; n++) {
+      weights.set(n, (analysis.mainFreq[n] || 0) + 1); // +1 smoothing so nothing is impossible
+    }
+    return weights;
+  }, [analysis]);
+
+  const pbBaseWeights = useMemo(() => {
+    const weights = new Map();
+    for (let n = 1; n <= 26; n++) {
+      weights.set(n, (analysis.pbFreq[n] || 0) + 1); // +1 smoothing
+    }
+    return weights;
+  }, [analysis]);
+
+  const pickOneBlended = (availableNums, baseWeights, alpha) => {
+    // alpha: 0 -> fully weighted; 1 -> fully uniform
+    const a = clampNumber(alpha, 0, 1);
+    const uniformP = 1 / availableNums.length;
+
+    let sumW = 0;
+    for (const n of availableNums) sumW += baseWeights.get(n) || 0;
+    if (sumW <= 0) sumW = availableNums.length;
+
+    let r = Math.random();
+    let cumulative = 0;
+
+    for (const n of availableNums) {
+      const w = baseWeights.get(n) || 1;
+      const weightedP = w / sumW;
+      const p = (1 - a) * weightedP + a * uniformP;
+      cumulative += p;
+
+      if (r <= cumulative) return n;
+    }
+
+    return availableNums[availableNums.length - 1];
+  };
+
+  const generatePicks = (count, randomnessPct) => {
     const safeCount = clampInt(count, 1, 50);
+    const alpha = clampNumber(randomnessPct, 0, 100) / 100;
     const picks = [];
 
     for (let i = 0; i < safeCount; i++) {
-      const mainNums = new Set();
-      while (mainNums.size < 5) {
-        const num = Math.floor(Math.random() * 69) + 1;
-        mainNums.add(num);
+      const availableMain = [];
+      for (let n = 1; n <= 69; n++) availableMain.push(n);
+
+      const main = [];
+      for (let j = 0; j < 5; j++) {
+        const selected = pickOneBlended(availableMain, mainBaseWeights, alpha);
+        main.push(selected);
+        availableMain.splice(availableMain.indexOf(selected), 1);
       }
 
-      const pb = Math.floor(Math.random() * 26) + 1;
+      const availablePb = [];
+      for (let n = 1; n <= 26; n++) availablePb.push(n);
+      const powerball = pickOneBlended(availablePb, pbBaseWeights, alpha);
 
       picks.push({
-        main: Array.from(mainNums).sort((a, b) => a - b),
-        powerball: pb,
+        main: main.sort((a, b) => a - b),
+        powerball,
       });
     }
 
@@ -119,12 +172,13 @@ const PowerballGenerator = () => {
   };
 
   const [numLines, setNumLines] = useState(5);
-  const [picks, setPicks] = useState(() => generatePicks(5));
+  const [randomness, setRandomness] = useState(70);
+  const [picks, setPicks] = useState(() => generatePicks(5, 70));
   const [showStats, setShowStats] = useState(false);
 
   useEffect(() => {
-    setPicks(generatePicks(numLines));
-  }, [numLines]);
+    setPicks(generatePicks(numLines, randomness));
+  }, [numLines, randomness, mainBaseWeights, pbBaseWeights]);
 
   const topMain = Object.entries(analysis.mainFreq)
     .sort((a, b) => b[1] - a[1])
@@ -141,37 +195,82 @@ const PowerballGenerator = () => {
           🎱 Powerball Number Generator
         </h1>
         <p className="text-gray-600 mb-4">
-          Nightly-synced Powerball winning numbers (falls back to embedded data
-          if unavailable)
-          {drawsUpdatedAt ? ` • Updated ${drawsUpdatedAt}` : ""}
+          Generates picks using a blend of historical frequency weighting and
+          randomness (higher randomness = closer to uniform random). Data is
+          nightly-synced (falls back to embedded data in local dev).
+          {drawsUpdatedAt && (
+            <span className="inline-block ml-2 text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+              Updated <span className="font-medium">{drawsUpdatedAt}</span>
+            </span>
+          )}
         </p>
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <label
-              htmlFor="numLines"
-              className="font-semibold text-gray-700 whitespace-nowrap"
+        <div className="flex flex-col gap-3 mb-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div className="flex items-center gap-3">
+              <label
+                htmlFor="numLines"
+                className="font-semibold text-gray-700 whitespace-nowrap"
+              >
+                Number of lines
+              </label>
+              <input
+                id="numLines"
+                type="number"
+                min={1}
+                max={50}
+                step={1}
+                value={numLines}
+                onChange={(e) => setNumLines(clampInt(e.target.value, 1, 50))}
+                className="w-24 rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
+              />
+            </div>
+
+            <button
+              onClick={() => setPicks(generatePicks(numLines, randomness))}
+              className="bg-red-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-red-700 transition"
             >
-              Number of lines
-            </label>
-            <input
-              id="numLines"
-              type="number"
-              min={1}
-              max={50}
-              step={1}
-              value={numLines}
-              onChange={(e) => setNumLines(clampInt(e.target.value, 1, 50))}
-              className="w-24 rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
-            />
+              🎲 Generate New Picks
+            </button>
           </div>
 
-          <button
-            onClick={() => setPicks(generatePicks(numLines))}
-            className="bg-red-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-red-700 transition"
-          >
-            🎲 Generate New Picks
-          </button>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <label
+              htmlFor="randomness"
+              className="font-semibold text-gray-700 whitespace-nowrap"
+            >
+              Randomness
+            </label>
+            <input
+              id="randomness"
+              type="range"
+              min={0}
+              max={100}
+              value={randomness}
+              onChange={(e) => setRandomness(clampInt(e.target.value, 0, 100))}
+              className="w-full"
+            />
+            <div className="flex items-center gap-2">
+              <input
+                aria-label="Randomness percent"
+                type="number"
+                min={0}
+                max={100}
+                value={randomness}
+                onChange={(e) =>
+                  setRandomness(clampInt(e.target.value, 0, 100))
+                }
+                className="w-20 rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
+              />
+              <span className="text-sm text-gray-600">%</span>
+            </div>
+          </div>
+
+          <p className="text-xs text-gray-500">
+            0% = mostly history-weighted • 100% = fully uniform random. Main
+            numbers are always unique within a line; duplicate lines can still
+            happen (especially at higher randomness).
+          </p>
         </div>
 
         <div className="space-y-4">
