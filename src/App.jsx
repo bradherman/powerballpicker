@@ -23,55 +23,10 @@ const PowerballGenerator = () => {
     return Math.max(min, Math.min(max, n));
   };
 
-  const validateNumberList = (input, min, max) => {
-    const raw = String(input ?? "").trim();
-    if (!raw) return { numbers: [], errors: [] };
-
-    const parts = raw
-      .split(",")
-      .map((p) => p.trim())
-      .filter(Boolean);
-
-    const seen = new Set();
-    const duplicates = new Set();
-    const invalidTokens = [];
-    const outOfRange = [];
-    const numbers = [];
-
-    for (const part of parts) {
-      const n = Number.parseInt(part, 10);
-      if (!Number.isFinite(n)) {
-        invalidTokens.push(part);
-        continue;
-      }
-      if (n < min || n > max) {
-        outOfRange.push(n);
-        continue;
-      }
-      if (seen.has(n)) {
-        duplicates.add(n);
-        continue;
-      }
-      seen.add(n);
-      numbers.push(n);
-    }
-
-    const errors = [];
-    if (invalidTokens.length > 0) {
-      errors.push(`Invalid entries: ${invalidTokens.join(", ")}`);
-    }
-    if (outOfRange.length > 0) {
-      errors.push(
-        `Out of range (${min}–${max}): ${Array.from(new Set(outOfRange)).join(
-          ", "
-        )}`
-      );
-    }
-    if (duplicates.size > 0) {
-      errors.push(`Duplicate numbers: ${Array.from(duplicates).join(", ")}`);
-    }
-
-    return { numbers, errors };
+  const toggleInSet = (arr, value) => {
+    return arr.includes(value)
+      ? arr.filter((n) => n !== value)
+      : [...arr, value];
   };
 
   const fallbackDraws = useMemo(() => {
@@ -249,32 +204,27 @@ const PowerballGenerator = () => {
 
   const [numLines, setNumLines] = useState(5);
   const [randomness, setRandomness] = useState(70);
-  const [mainLockedInput, setMainLockedInput] = useState("");
-  const [powerballLockedInput, setPowerballLockedInput] = useState("");
-
-  const mainLockedValidation = useMemo(() => {
-    return validateNumberList(mainLockedInput, 1, 69);
-  }, [mainLockedInput]);
-  const powerballLockedValidation = useMemo(() => {
-    return validateNumberList(powerballLockedInput, 1, 26);
-  }, [powerballLockedInput]);
-
-  const mainLocked = mainLockedValidation.numbers;
-  const powerballLocked = powerballLockedValidation.numbers;
+  const [mainLocked, setMainLocked] = useState([]);
+  const [powerballLocked, setPowerballLocked] = useState([]);
+  const [showMainLockedPicker, setShowMainLockedPicker] = useState(false);
+  const [showPowerballLockedPicker, setShowPowerballLockedPicker] =
+    useState(false);
+  const [mainLockedUiError, setMainLockedUiError] = useState(null);
 
   const lockedError = useMemo(() => {
-    if (mainLockedValidation.errors.length > 0)
-      return "Fix Main locked errors.";
-    if (powerballLockedValidation.errors.length > 0)
-      return "Fix Powerball locked errors.";
     if (mainLocked.length > 5)
       return "Main locked can include at most 5 numbers (since there are only 5 main balls).";
     return null;
-  }, [
-    mainLocked,
-    mainLockedValidation.errors,
-    powerballLockedValidation.errors,
-  ]);
+  }, [mainLocked]);
+
+  const mainBallNumbers = useMemo(
+    () => Array.from({ length: 69 }, (_, i) => i + 1),
+    []
+  );
+  const powerballNumbers = useMemo(
+    () => Array.from({ length: 26 }, (_, i) => i + 1),
+    []
+  );
 
   const [picks, setPicks] = useState(() => generatePicks(5, 70, [], []));
   const [editing, setEditing] = useState(null);
@@ -282,6 +232,194 @@ const PowerballGenerator = () => {
   const [editError, setEditError] = useState(null);
   const [copied, setCopied] = useState(null);
   const [showStats, setShowStats] = useState(true);
+
+  const getEtParts = (date) => {
+    const dtf = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+
+    const parts = Object.fromEntries(
+      dtf.formatToParts(date).map((p) => [p.type, p.value])
+    );
+
+    return {
+      year: Number(parts.year),
+      month: Number(parts.month),
+      day: Number(parts.day),
+      weekdayShort: parts.weekday,
+      hour: Number(parts.hour),
+      minute: Number(parts.minute),
+    };
+  };
+
+  const addDaysUtc = (date, days) =>
+    new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
+
+  const weekdayIndex = (short) => {
+    switch (short) {
+      case "Sun":
+        return 0;
+      case "Mon":
+        return 1;
+      case "Tue":
+        return 2;
+      case "Wed":
+        return 3;
+      case "Thu":
+        return 4;
+      case "Fri":
+        return 5;
+      case "Sat":
+        return 6;
+      default:
+        return null;
+    }
+  };
+
+  const zonedTimeToUtc = (timeZone, y, m, d, hh, mm) => {
+    // Convert a wall-clock time in a named time zone to a UTC Date without extra deps.
+    // We do this by starting with a UTC guess, seeing what wall time it maps to in
+    // the zone, and adjusting a couple times.
+    let guess = new Date(Date.UTC(y, m - 1, d, hh, mm, 0));
+
+    for (let i = 0; i < 3; i++) {
+      const fmt = new Intl.DateTimeFormat("en-US", {
+        timeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      });
+
+      const p = Object.fromEntries(
+        fmt.formatToParts(guess).map((x) => [x.type, x.value])
+      );
+      const gotY = Number(p.year);
+      const gotM = Number(p.month);
+      const gotD = Number(p.day);
+      const gotH = Number(p.hour);
+      const gotMin = Number(p.minute);
+
+      const desired = Date.UTC(y, m - 1, d, hh, mm, 0);
+      const got = Date.UTC(gotY, gotM - 1, gotD, gotH, gotMin, 0);
+      const diffMs = desired - got;
+
+      if (diffMs === 0) break;
+      guess = new Date(guess.getTime() + diffMs);
+    }
+
+    return guess;
+  };
+
+  const computeNextPowerballDraw = (now) => {
+    // Official draw schedule: Mon / Wed / Sat at 10:59 PM ET.
+    const DRAW_DOW = new Set([1, 3, 6]); // Mon, Wed, Sat
+    const DRAW_HOUR = 22;
+    const DRAW_MIN = 59;
+
+    const etNow = getEtParts(now);
+    const etDow = weekdayIndex(etNow.weekdayShort);
+
+    // Build a "date anchor" representing today's ET Y/M/D at noon UTC, then add days.
+    const etDateAnchorUtc = new Date(
+      Date.UTC(etNow.year, etNow.month - 1, etNow.day, 12, 0, 0)
+    );
+
+    const isDrawDay = etDow != null && DRAW_DOW.has(etDow);
+    const isBeforeDrawTime =
+      etNow.hour < DRAW_HOUR ||
+      (etNow.hour === DRAW_HOUR && etNow.minute < DRAW_MIN);
+
+    let daysAhead = 0;
+    if (!(isDrawDay && isBeforeDrawTime)) {
+      for (let i = 1; i <= 7; i++) {
+        const candidateUtc = addDaysUtc(etDateAnchorUtc, i);
+        const candidateEt = getEtParts(candidateUtc);
+        const dow = weekdayIndex(candidateEt.weekdayShort);
+        if (dow != null && DRAW_DOW.has(dow)) {
+          daysAhead = i;
+          break;
+        }
+      }
+    }
+
+    const targetEtDate = getEtParts(addDaysUtc(etDateAnchorUtc, daysAhead));
+    const drawUtc = zonedTimeToUtc(
+      "America/New_York",
+      targetEtDate.year,
+      targetEtDate.month,
+      targetEtDate.day,
+      DRAW_HOUR,
+      DRAW_MIN
+    );
+
+    return {
+      utc: drawUtc,
+      etLabel: new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/New_York",
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        timeZoneName: "short",
+      }).format(drawUtc),
+      localLabel: new Intl.DateTimeFormat(undefined, {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      }).format(drawUtc),
+    };
+  };
+
+  const [nextPowerballDraw, setNextPowerballDraw] = useState(() =>
+    computeNextPowerballDraw(new Date())
+  );
+  const [nextDrawCountdownMs, setNextDrawCountdownMs] = useState(() =>
+    Math.max(0, nextPowerballDraw.utc.getTime() - Date.now())
+  );
+
+  const formatCountdown = (ms) => {
+    const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+    const days = Math.floor(totalSeconds / 86400);
+    const hours = Math.floor((totalSeconds % 86400) / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    const hh = String(hours).padStart(2, "0");
+    const mm = String(minutes).padStart(2, "0");
+    const ss = String(seconds).padStart(2, "0");
+
+    return days > 0 ? `${days}d ${hh}:${mm}:${ss}` : `${hh}:${mm}:${ss}`;
+  };
+
+  useEffect(() => {
+    const tick = () => {
+      const nowMs = Date.now();
+      setNextPowerballDraw((prev) => {
+        const prevMs = prev?.utc?.getTime?.() ?? 0;
+        const next =
+          nowMs >= prevMs ? computeNextPowerballDraw(new Date(nowMs)) : prev;
+        setNextDrawCountdownMs(Math.max(0, next.utc.getTime() - nowMs));
+        return next;
+      });
+    };
+
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
 
   const formatPickLine = (pick) => {
     const main = pick.main.map((n) => String(n).padStart(2, "0")).join(" ");
@@ -405,6 +543,22 @@ const PowerballGenerator = () => {
     setEditError(null);
   };
 
+  const toggleMainLocked = (n) => {
+    setMainLockedUiError(null);
+    setMainLocked((prev) => {
+      if (prev.includes(n)) return prev.filter((x) => x !== n);
+      if (prev.length >= 5) {
+        setMainLockedUiError("Main locked is limited to 5 numbers.");
+        return prev;
+      }
+      return [...prev, n].sort((a, b) => a - b);
+    });
+  };
+
+  const togglePowerballLocked = (n) => {
+    setPowerballLocked((prev) => toggleInSet(prev, n).sort((a, b) => a - b));
+  };
+
   const topMain = Object.entries(analysis.mainFreq)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 10);
@@ -452,9 +606,6 @@ const PowerballGenerator = () => {
                   <span className="rounded-full bg-white/5 px-3 py-1 ring-1 ring-white/10 text-white/80">
                     Powerball: 1 of 26
                   </span>
-                  <span className="rounded-full bg-white/5 px-3 py-1 ring-1 ring-white/10 text-white/80">
-                    No auto-refresh while tweaking settings
-                  </span>
                   {drawsUpdatedAt && (
                     <span className="rounded-full bg-white/5 px-3 py-1 ring-1 ring-white/10 text-white/80">
                       Data updated{" "}
@@ -463,6 +614,43 @@ const PowerballGenerator = () => {
                       </span>
                     </span>
                   )}
+                </div>
+              </div>
+
+              <div className="sm:w-[360px]">
+                <div className="rounded-2xl bg-white/5 p-4 ring-1 ring-white/10 backdrop-blur">
+                  <div className="text-sm font-semibold text-white/90">
+                    Next drawing
+                  </div>
+                  <div className="mt-2 text-sm text-white/70">
+                    <div>
+                      <span className="font-semibold text-white">ET:</span>{" "}
+                      {nextPowerballDraw.etLabel}
+                    </div>
+                    <div className="mt-1">
+                      <span className="font-semibold text-white">Local:</span>{" "}
+                      {nextPowerballDraw.localLabel}
+                    </div>
+                    <div className="mt-2 text-xs text-white/60">
+                      Draws: Mon / Wed / Sat at 10:59 PM ET.
+                    </div>
+                  </div>
+                  <div className="mt-3 rounded-xl border border-white/10 bg-white/5 px-3 py-3">
+                    <div className="text-[11px] font-semibold tracking-wide text-white/60">
+                      COUNTDOWN
+                    </div>
+                    <div className="mt-1 font-mono text-2xl font-extrabold text-white">
+                      {formatCountdown(nextDrawCountdownMs)}
+                    </div>
+                  </div>
+                  <a
+                    className="mt-3 inline-flex w-full items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/90 transition hover:bg-white/10"
+                    href="https://www.powerball.com/"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Official Powerball site
+                  </a>
                 </div>
               </div>
             </div>
@@ -479,6 +667,27 @@ const PowerballGenerator = () => {
                 <p className="mt-1 text-sm text-white/70">
                   Settings won’t regenerate picks until you click the button.
                 </p>
+
+                <button
+                  onClick={() => {
+                    if (lockedError) return;
+                    setEditing(null);
+                    setEditValue("");
+                    setEditError(null);
+                    setCopied(null);
+                    setPicks(
+                      generatePicks(
+                        numLines,
+                        randomness,
+                        mainLocked,
+                        powerballLocked
+                      )
+                    );
+                  }}
+                  className="mt-5 w-full rounded-xl bg-linear-to-r from-red-500 via-red-500 to-orange-400 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-red-500/20 ring-1 ring-white/10 transition hover:brightness-110 active:brightness-95 disabled:opacity-60"
+                >
+                  Generate New Picks
+                </button>
 
                 <div className="mt-5 space-y-5">
                   <div>
@@ -542,54 +751,141 @@ const PowerballGenerator = () => {
                       className="mt-3 w-full accent-red-400"
                     />
                     <p className="mt-2 text-xs text-white/60">
-                      0% leans into historical weighting. 100% is uniform random.
+                      0% leans into historical weighting. 100% is uniform
+                      random.
                     </p>
                   </div>
 
                   <div>
-                    <label
-                      htmlFor="mainLockedNumbers"
-                      className="block text-sm font-semibold text-white/90"
-                    >
-                      Main locked (1–69)
-                    </label>
-                    <input
-                      id="mainLockedNumbers"
-                      type="text"
-                      value={mainLockedInput}
-                      onChange={(e) => setMainLockedInput(e.target.value)}
-                      placeholder="e.g. 13, 24"
-                      className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white shadow-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-red-400/30"
-                    />
-                    {mainLockedValidation.errors.length > 0 ? (
+                    <div className="flex items-center justify-between gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setShowMainLockedPicker((prev) => !prev)}
+                        className="flex items-center gap-2 text-left"
+                      >
+                        <span className="text-sm font-semibold text-white/90">
+                          Main locked
+                        </span>
+                        <span className="text-xs text-white/50">
+                          ({mainLocked.length}/5)
+                        </span>
+                        <span className="text-xs text-white/50">
+                          {showMainLockedPicker ? "▼" : "▶"}
+                        </span>
+                      </button>
+
+                      {mainLocked.length > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => setMainLocked([])}
+                          className="text-xs font-semibold text-white/70 hover:text-white"
+                        >
+                          Clear
+                        </button>
+                      ) : null}
+                    </div>
+
+                    {showMainLockedPicker ? (
+                      <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 p-3">
+                        <div className="max-h-[340px] overflow-auto pr-1">
+                          <div className="grid gap-2 grid-cols-[repeat(auto-fill,minmax(2.25rem,1fr))] sm:grid-cols-[repeat(auto-fill,minmax(2.5rem,1fr))]">
+                            {mainBallNumbers.map((n) => {
+                              const selected = mainLocked.includes(n);
+                              return (
+                                <button
+                                  key={n}
+                                  type="button"
+                                  onClick={() => toggleMainLocked(n)}
+                                  className={[
+                                    "aspect-square w-full rounded-full font-extrabold text-[11px] sm:text-xs transition",
+                                    selected
+                                      ? "bg-white text-slate-900 ring-4 ring-inset ring-red-400/60"
+                                      : "bg-white text-slate-900 ring-1 ring-white/25 hover:brightness-105",
+                                  ].join(" ")}
+                                  title={
+                                    selected ? "Unlocked" : "Lock this number"
+                                  }
+                                >
+                                  {String(n).padStart(2, "0")}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        <p className="mt-3 text-xs text-white/60">
+                          Click balls to lock/unlock. Main locked numbers must
+                          appear in every line.
+                        </p>
+                      </div>
+                    ) : null}
+
+                    {mainLockedUiError ? (
                       <div className="mt-2 rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
-                        {mainLockedValidation.errors.map((e) => (
-                          <div key={e}>{e}</div>
-                        ))}
+                        {mainLockedUiError}
                       </div>
                     ) : null}
                   </div>
 
                   <div>
-                    <label
-                      htmlFor="powerballLockedNumbers"
-                      className="block text-sm font-semibold text-white/90"
-                    >
-                      Powerball locked (1–26)
-                    </label>
-                    <input
-                      id="powerballLockedNumbers"
-                      type="text"
-                      value={powerballLockedInput}
-                      onChange={(e) => setPowerballLockedInput(e.target.value)}
-                      placeholder="e.g. 13, 24"
-                      className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white shadow-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-red-400/30"
-                    />
-                    {powerballLockedValidation.errors.length > 0 ? (
-                      <div className="mt-2 rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
-                        {powerballLockedValidation.errors.map((e) => (
-                          <div key={e}>{e}</div>
-                        ))}
+                    <div className="flex items-center justify-between gap-3">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setShowPowerballLockedPicker((prev) => !prev)
+                        }
+                        className="flex items-center gap-2 text-left"
+                      >
+                        <span className="text-sm font-semibold text-white/90">
+                          Powerball locked
+                        </span>
+                        <span className="text-xs text-white/50">
+                          ({powerballLocked.length || 0})
+                        </span>
+                        <span className="text-xs text-white/50">
+                          {showPowerballLockedPicker ? "▼" : "▶"}
+                        </span>
+                      </button>
+
+                      {powerballLocked.length > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => setPowerballLocked([])}
+                          className="text-xs font-semibold text-white/70 hover:text-white"
+                        >
+                          Clear
+                        </button>
+                      ) : null}
+                    </div>
+
+                    {showPowerballLockedPicker ? (
+                      <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 p-3">
+                        <div className="grid gap-2 grid-cols-[repeat(auto-fill,minmax(2.25rem,1fr))] sm:grid-cols-[repeat(auto-fill,minmax(2.5rem,1fr))]">
+                          {powerballNumbers.map((n) => {
+                            const selected = powerballLocked.includes(n);
+                            return (
+                              <button
+                                key={n}
+                                type="button"
+                                onClick={() => togglePowerballLocked(n)}
+                                className={[
+                                  "aspect-square w-full rounded-full font-extrabold text-[11px] sm:text-xs transition shadow-sm",
+                                  selected
+                                    ? "bg-linear-to-b from-red-500 to-red-700 text-white ring-4 ring-inset ring-red-200/80"
+                                    : "bg-linear-to-b from-red-500/70 to-red-700/70 text-white ring-1 ring-red-300/30 hover:brightness-110",
+                                ].join(" ")}
+                                title={
+                                  selected ? "Unlocked" : "Lock as candidate"
+                                }
+                              >
+                                {String(n).padStart(2, "0")}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <p className="mt-3 text-xs text-white/60">
+                          If you select any Powerball locked numbers, the
+                          Powerball will be chosen only from those.
+                        </p>
                       </div>
                     ) : null}
                   </div>
@@ -616,27 +912,6 @@ const PowerballGenerator = () => {
                       </div>
                     </div>
                   ) : null}
-
-                  <button
-                    onClick={() => {
-                      if (lockedError) return;
-                      setEditing(null);
-                      setEditValue("");
-                      setEditError(null);
-                      setCopied(null);
-                      setPicks(
-                        generatePicks(
-                          numLines,
-                          randomness,
-                          mainLocked,
-                          powerballLocked
-                        )
-                      );
-                    }}
-                    className="w-full rounded-xl bg-gradient-to-r from-red-500 via-red-500 to-orange-400 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-red-500/20 ring-1 ring-white/10 transition hover:brightness-110 active:brightness-95 disabled:opacity-60"
-                  >
-                    Generate New Picks
-                  </button>
                 </div>
               </div>
             </section>
@@ -649,7 +924,8 @@ const PowerballGenerator = () => {
                       Your picks
                     </h2>
                     <p className="mt-1 text-sm text-white/70">
-                      Click any ball to edit. Copy a single line or the full set.
+                      Click any ball to edit. Copy a single line or the full
+                      set.
                     </p>
                   </div>
                   <button
@@ -688,7 +964,12 @@ const PowerballGenerator = () => {
                                 return (
                                   <div
                                     key={i}
-                                    className="h-12 w-12 rounded-full bg-white/10 ring-2 ring-red-400/40 flex items-center justify-center"
+                                    className={[
+                                      "h-12 w-12 rounded-full bg-white flex items-center justify-center shadow-sm",
+                                      mainLocked.includes(num)
+                                        ? "ring-4 ring-inset ring-amber-400/80"
+                                        : "ring-2 ring-red-400/40",
+                                    ].join(" ")}
                                   >
                                     <input
                                       autoFocus
@@ -697,13 +978,15 @@ const PowerballGenerator = () => {
                                       max={69}
                                       inputMode="numeric"
                                       value={editValue}
-                                      onChange={(e) => setEditValue(e.target.value)}
+                                      onChange={(e) =>
+                                        setEditValue(e.target.value)
+                                      }
                                       onKeyDown={(e) => {
                                         if (e.key === "Enter") commitEdit();
                                         if (e.key === "Escape") cancelEdit();
                                       }}
                                       onBlur={cancelEdit}
-                                      className="w-10 bg-transparent text-center text-sm font-bold text-white focus:outline-none"
+                                      className="w-10 bg-transparent text-center text-sm font-extrabold text-slate-900 focus:outline-none"
                                     />
                                   </div>
                                 );
@@ -715,7 +998,12 @@ const PowerballGenerator = () => {
                                   type="button"
                                   title="Click to edit"
                                   onClick={() => beginEdit(idx, "main", i)}
-                                  className="h-12 w-12 rounded-full bg-white/10 text-white font-bold ring-1 ring-white/10 transition hover:bg-white/15"
+                                  className={[
+                                    "h-12 w-12 rounded-full bg-white text-slate-900 font-extrabold shadow-sm transition hover:brightness-105",
+                                    mainLocked.includes(num)
+                                      ? "ring-4 ring-inset ring-amber-400/80"
+                                      : "ring-1 ring-white/25",
+                                  ].join(" ")}
                                 >
                                   {num.toString().padStart(2, "0")}
                                 </button>
@@ -727,10 +1015,19 @@ const PowerballGenerator = () => {
 
                           {(() => {
                             const isEditingPb =
-                              editing?.lineIdx === idx && editing?.kind === "pb";
+                              editing?.lineIdx === idx &&
+                              editing?.kind === "pb";
                             if (isEditingPb) {
                               return (
-                                <div className="h-12 w-12 rounded-full bg-gradient-to-b from-red-500 to-red-700 ring-2 ring-red-300/40 flex items-center justify-center shadow-lg shadow-red-500/15">
+                                <div
+                                  className={[
+                                    "h-12 w-12 rounded-full bg-linear-to-b from-red-500 to-red-700 flex items-center justify-center shadow-lg shadow-red-500/15",
+                                    powerballLocked.length > 0 &&
+                                    powerballLocked.includes(pick.powerball)
+                                      ? "ring-4 ring-inset ring-amber-200/90"
+                                      : "ring-2 ring-red-300/40",
+                                  ].join(" ")}
+                                >
                                   <input
                                     autoFocus
                                     type="number"
@@ -738,7 +1035,9 @@ const PowerballGenerator = () => {
                                     max={26}
                                     inputMode="numeric"
                                     value={editValue}
-                                    onChange={(e) => setEditValue(e.target.value)}
+                                    onChange={(e) =>
+                                      setEditValue(e.target.value)
+                                    }
                                     onKeyDown={(e) => {
                                       if (e.key === "Enter") commitEdit();
                                       if (e.key === "Escape") cancelEdit();
@@ -755,7 +1054,13 @@ const PowerballGenerator = () => {
                                 type="button"
                                 title="Click to edit"
                                 onClick={() => beginEdit(idx, "pb", null)}
-                                className="h-12 w-12 rounded-full bg-gradient-to-b from-red-500 to-red-700 text-white font-extrabold ring-1 ring-red-300/30 shadow-lg shadow-red-500/15 transition hover:brightness-110"
+                                className={[
+                                  "h-12 w-12 rounded-full bg-linear-to-b from-red-500 to-red-700 text-white font-extrabold shadow-lg shadow-red-500/15 transition hover:brightness-110",
+                                  powerballLocked.length > 0 &&
+                                  powerballLocked.includes(pick.powerball)
+                                    ? "ring-4 ring-inset ring-amber-200/90"
+                                    : "ring-1 ring-red-300/30",
+                                ].join(" ")}
                               >
                                 {pick.powerball.toString().padStart(2, "0")}
                               </button>
@@ -812,9 +1117,7 @@ const PowerballGenerator = () => {
                           key={num}
                           className="rounded-xl border border-white/10 bg-white/5 p-2 text-center"
                         >
-                          <div className="font-extrabold text-white">
-                            {num}
-                          </div>
+                          <div className="font-extrabold text-white">{num}</div>
                           <div className="text-xs text-white/60">{count}x</div>
                         </div>
                       ))}
@@ -837,9 +1140,7 @@ const PowerballGenerator = () => {
                           key={num}
                           className="rounded-xl border border-white/10 bg-white/5 p-2 text-center"
                         >
-                          <div className="font-extrabold text-white">
-                            {num}
-                          </div>
+                          <div className="font-extrabold text-white">{num}</div>
                           <div className="text-xs text-white/60">{count}x</div>
                         </div>
                       ))}
@@ -850,8 +1151,8 @@ const PowerballGenerator = () => {
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                   <p className="text-sm text-white/70">
                     <strong className="text-white">Note:</strong> Powerball is
-                    random. Historical frequency does not predict future results.
-                    Play responsibly.
+                    random. Historical frequency does not predict future
+                    results. Play responsibly.
                   </p>
                 </div>
               </div>

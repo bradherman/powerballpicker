@@ -4,6 +4,8 @@ Helps you pick powerball lines. Includes historic data so that we filter out pre
 
 100% vibe coded.
 
+[https://powerball.bherms.com](https://powerball.bherms.com)
+
 # React + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
