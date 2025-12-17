@@ -1,3 +1,9 @@
+# Powerball Picker
+
+Helps you pick powerball lines. Includes historic data so that we filter out previous winning lines + take into account historic number weights (with configurable variability). Allows you to also set specific numbers, manually modify picks, copy results, and more.
+
+100% vibe coded.
+
 # React + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
@@ -68,6 +74,7 @@ curl -X POST "https://yourdomain.com/api/powerball/sync" \
 ```
 
 6. Route `/api/*` to the Worker so your Cloudflare Pages site can call it on the same host:
+
    - In the Cloudflare dashboard: **Workers & Pages → your Worker → Triggers → Routes**
    - Add a route for your Pages domain like `your-site.pages.dev/api/*` (or your custom domain).
 

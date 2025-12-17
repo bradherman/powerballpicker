@@ -281,7 +281,7 @@ const PowerballGenerator = () => {
   const [editValue, setEditValue] = useState("");
   const [editError, setEditError] = useState(null);
   const [copied, setCopied] = useState(null);
-  const [showStats, setShowStats] = useState(false);
+  const [showStats, setShowStats] = useState(true);
 
   const formatPickLine = (pick) => {
     const main = pick.main.map((n) => String(n).padStart(2, "0")).join(" ");
@@ -414,381 +414,454 @@ const PowerballGenerator = () => {
     .slice(0, 5);
 
   return (
-    <div className="p-6 max-w-4xl mx-auto bg-linear-to-br from-red-50 to-white min-h-screen">
-      <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-        <h1 className="text-3xl font-bold text-red-600 mb-2">
-          🎱 Powerball Number Generator
-        </h1>
-        <p className="text-gray-600 mb-4">
-          Generates picks using a blend of historical frequency weighting and
-          randomness (higher randomness = closer to uniform random). You can
-          also lock numbers to be included in every pick. Data is nightly-synced
-          (falls back to embedded data in local dev).
-          {drawsUpdatedAt && (
-            <span className="inline-block ml-2 text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
-              Updated <span className="font-medium">{drawsUpdatedAt}</span>
-            </span>
-          )}
-        </p>
-
-        <p className="text-gray-600 mb-4">
-          If you win, please give me %1 of the jackpot.
-        </p>
-
-        <div className="flex flex-col gap-3 mb-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div className="flex items-center gap-3">
-              <label
-                htmlFor="numLines"
-                className="font-semibold text-gray-700 whitespace-nowrap"
-              >
-                Number of lines
-              </label>
-              <input
-                id="numLines"
-                type="number"
-                min={1}
-                max={50}
-                step={1}
-                value={numLines}
-                onChange={(e) => setNumLines(clampInt(e.target.value, 1, 50))}
-                className="w-24 rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
-              />
-            </div>
-
-            <button
-              onClick={() => {
-                if (lockedError) return;
-                setEditing(null);
-                setEditValue("");
-                setEditError(null);
-                setCopied(null);
-                setPicks(
-                  generatePicks(
-                    numLines,
-                    randomness,
-                    mainLocked,
-                    powerballLocked
-                  )
-                );
-              }}
-              className="bg-red-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-red-700 transition"
-            >
-              🎲 Generate New Picks
-            </button>
-          </div>
-
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-            <label
-              htmlFor="randomness"
-              className="font-semibold text-gray-700 whitespace-nowrap"
-            >
-              Randomness
-            </label>
-            <input
-              id="randomness"
-              type="range"
-              min={0}
-              max={100}
-              value={randomness}
-              onChange={(e) => setRandomness(clampInt(e.target.value, 0, 100))}
-              className="w-full"
-            />
-            <div className="flex items-center gap-2">
-              <input
-                aria-label="Randomness percent"
-                type="number"
-                min={0}
-                max={100}
-                value={randomness}
-                onChange={(e) =>
-                  setRandomness(clampInt(e.target.value, 0, 100))
-                }
-                className="w-20 rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
-              />
-              <span className="text-sm text-gray-600">%</span>
-            </div>
-          </div>
-
-          <p className="text-xs text-gray-500">
-            0% = mostly history-weighted • 100% = fully uniform random. Main
-            numbers are always unique within a line; duplicate lines can still
-            happen (especially at higher randomness).
-          </p>
-
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-            <label
-              htmlFor="mainLockedNumbers"
-              className="font-semibold text-gray-700 whitespace-nowrap"
-            >
-              Main locked
-            </label>
-            <input
-              id="mainLockedNumbers"
-              type="text"
-              value={mainLockedInput}
-              onChange={(e) => setMainLockedInput(e.target.value)}
-              placeholder="e.g. 13, 24"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
-            />
-          </div>
-
-          {mainLockedValidation.errors.length > 0 ? (
-            <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-              {mainLockedValidation.errors.map((e) => (
-                <div key={e}>{e}</div>
-              ))}
-            </div>
-          ) : null}
-
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-            <label
-              htmlFor="powerballLockedNumbers"
-              className="font-semibold text-gray-700 whitespace-nowrap"
-            >
-              Powerball locked
-            </label>
-            <input
-              id="powerballLockedNumbers"
-              type="text"
-              value={powerballLockedInput}
-              onChange={(e) => setPowerballLockedInput(e.target.value)}
-              placeholder="e.g. 13, 24"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
-            />
-          </div>
-
-          {powerballLockedValidation.errors.length > 0 ? (
-            <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-              {powerballLockedValidation.errors.map((e) => (
-                <div key={e}>{e}</div>
-              ))}
-            </div>
-          ) : null}
-
-          {lockedError ? (
-            <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-              {lockedError}
-            </div>
-          ) : mainLocked.length > 0 || powerballLocked.length > 0 ? (
-            <div className="text-xs text-gray-600">
-              Main locked:{" "}
-              <span className="font-medium">
-                {mainLocked.length > 0 ? mainLocked.join(", ") : "—"}
-              </span>
-              {" • "}
-              Powerball locked:{" "}
-              <span className="font-medium">
-                {powerballLocked.length > 0 ? powerballLocked.join(", ") : "—"}
-              </span>
-            </div>
-          ) : null}
+    <div className="min-h-screen bg-slate-950 text-white">
+      <div className="relative isolate">
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="absolute -top-24 left-1/2 h-[520px] w-[920px] -translate-x-1/2 rounded-full bg-[radial-gradient(circle_at_center,rgba(239,68,68,0.28),transparent_55%)] blur-2xl" />
+          <div className="absolute -top-10 left-[-120px] h-[520px] w-[520px] rounded-full bg-[radial-gradient(circle_at_center,rgba(59,130,246,0.22),transparent_60%)] blur-2xl" />
+          <div className="absolute bottom-[-220px] right-[-180px] h-[640px] w-[640px] rounded-full bg-[radial-gradient(circle_at_center,rgba(168,85,247,0.20),transparent_60%)] blur-2xl" />
         </div>
 
-        <div className="space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-xl font-bold text-gray-800">
-              Your {picks.length} Powerball Picks:
-            </h2>
-            <button
-              type="button"
-              onClick={handleCopyAll}
-              className="text-sm font-semibold px-3 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 transition"
-            >
-              Copy all
-              {copied === "all" ? " ✓" : ""}
-            </button>
-          </div>
-          {picks.map((pick, idx) => (
-            <div
-              key={idx}
-              className="bg-linear-to-r from-gray-100 to-gray-50 p-4 rounded-lg border-2 border-gray-200"
-            >
-              <div className="flex items-center gap-3 flex-wrap justify-between">
-                <span className="font-bold text-gray-700">
-                  Pick #{idx + 1}:
-                </span>
-                <div className="flex items-center gap-3 flex-wrap">
-                  <div className="flex gap-2">
-                    {pick.main.map((num, i) => {
-                      const isEditing =
-                        editing?.lineIdx === idx &&
-                        editing?.kind === "main" &&
-                        editing?.index === i;
+        <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
+          <header className="mb-8">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <div className="inline-flex items-center gap-2 rounded-full bg-white/5 px-3 py-1 text-xs text-white/80 ring-1 ring-white/10">
+                  <span className="font-semibold tracking-wide">
+                    POWERBALL STUDIO
+                  </span>
+                  <span className="h-1 w-1 rounded-full bg-white/40" />
+                  <span>Weighted + editable</span>
+                </div>
 
-                      if (isEditing) {
-                        return (
-                          <div
-                            key={i}
-                            className="w-12 h-12 bg-white rounded-full flex items-center justify-center border-2 border-red-300 shadow"
-                          >
-                            <input
-                              autoFocus
-                              type="number"
-                              min={1}
-                              max={69}
-                              inputMode="numeric"
-                              value={editValue}
-                              onChange={(e) => setEditValue(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") commitEdit();
-                                if (e.key === "Escape") cancelEdit();
-                              }}
-                              onBlur={cancelEdit}
-                              className="w-10 text-center font-bold text-gray-800 focus:outline-none"
-                            />
-                          </div>
-                        );
-                      }
+                <h1 className="mt-4 text-4xl font-extrabold tracking-tight">
+                  Picks that feel handcrafted.
+                </h1>
+                <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/70">
+                  Tune the generator, lock what you want, then click{" "}
+                  <span className="font-semibold text-white">
+                    Generate New Picks
+                  </span>
+                  . Tap any ball to edit. Copy a line or the entire set.
+                </p>
 
-                      return (
-                        <button
-                          key={i}
-                          type="button"
-                          title="Click to edit"
-                          onClick={() => beginEdit(idx, "main", i)}
-                          className="w-12 h-12 bg-white rounded-full flex items-center justify-center font-bold text-gray-800 border-2 border-gray-300 shadow hover:border-gray-400 transition"
-                        >
-                          {num.toString().padStart(2, "0")}
-                        </button>
-                      );
-                    })}
+                <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
+                  <span className="rounded-full bg-white/5 px-3 py-1 ring-1 ring-white/10 text-white/80">
+                    Main: 5 of 69
+                  </span>
+                  <span className="rounded-full bg-white/5 px-3 py-1 ring-1 ring-white/10 text-white/80">
+                    Powerball: 1 of 26
+                  </span>
+                  <span className="rounded-full bg-white/5 px-3 py-1 ring-1 ring-white/10 text-white/80">
+                    No auto-refresh while tweaking settings
+                  </span>
+                  {drawsUpdatedAt && (
+                    <span className="rounded-full bg-white/5 px-3 py-1 ring-1 ring-white/10 text-white/80">
+                      Data updated{" "}
+                      <span className="font-semibold text-white">
+                        {drawsUpdatedAt}
+                      </span>
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </header>
+
+          <div className="grid gap-6 lg:grid-cols-12">
+            <section className="lg:col-span-4">
+              <div className="rounded-2xl bg-white/5 p-5 ring-1 ring-white/10 backdrop-blur">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-semibold tracking-tight">
+                    Controls
+                  </h2>
+                </div>
+                <p className="mt-1 text-sm text-white/70">
+                  Settings won’t regenerate picks until you click the button.
+                </p>
+
+                <div className="mt-5 space-y-5">
+                  <div>
+                    <label
+                      htmlFor="numLines"
+                      className="block text-sm font-semibold text-white/90"
+                    >
+                      Number of lines
+                    </label>
+                    <div className="mt-2 flex items-center gap-3">
+                      <input
+                        id="numLines"
+                        type="number"
+                        min={1}
+                        max={50}
+                        step={1}
+                        value={numLines}
+                        onChange={(e) =>
+                          setNumLines(clampInt(e.target.value, 1, 50))
+                        }
+                        className="w-28 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-red-400/30"
+                      />
+                      <span className="text-xs text-white/60">
+                        How many lines to generate
+                      </span>
+                    </div>
                   </div>
 
-                  <span className="text-gray-500 font-semibold">+</span>
-
-                  {(() => {
-                    const isEditingPb =
-                      editing?.lineIdx === idx && editing?.kind === "pb";
-                    if (isEditingPb) {
-                      return (
-                        <div className="w-12 h-12 bg-red-600 rounded-full flex items-center justify-center border-2 border-red-700 shadow-lg">
-                          <input
-                            autoFocus
-                            type="number"
-                            min={1}
-                            max={26}
-                            inputMode="numeric"
-                            value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") commitEdit();
-                              if (e.key === "Escape") cancelEdit();
-                            }}
-                            onBlur={cancelEdit}
-                            className="w-10 text-center font-bold text-white bg-transparent focus:outline-none"
-                          />
-                        </div>
-                      );
-                    }
-
-                    return (
-                      <button
-                        type="button"
-                        title="Click to edit"
-                        onClick={() => beginEdit(idx, "pb", null)}
-                        className="w-12 h-12 bg-red-600 rounded-full flex items-center justify-center font-bold text-white border-2 border-red-700 shadow-lg hover:bg-red-700 transition"
+                  <div>
+                    <div className="flex items-end justify-between gap-3">
+                      <label
+                        htmlFor="randomness"
+                        className="block text-sm font-semibold text-white/90"
                       >
-                        {pick.powerball.toString().padStart(2, "0")}
-                      </button>
-                    );
-                  })()}
+                        Randomness
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          aria-label="Randomness percent"
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={randomness}
+                          onChange={(e) =>
+                            setRandomness(clampInt(e.target.value, 0, 100))
+                          }
+                          className="w-20 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-red-400/30"
+                        />
+                        <span className="text-xs text-white/60">%</span>
+                      </div>
+                    </div>
+                    <input
+                      id="randomness"
+                      type="range"
+                      min={0}
+                      max={100}
+                      value={randomness}
+                      onChange={(e) =>
+                        setRandomness(clampInt(e.target.value, 0, 100))
+                      }
+                      className="mt-3 w-full accent-red-400"
+                    />
+                    <p className="mt-2 text-xs text-white/60">
+                      0% leans into historical weighting. 100% is uniform random.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="mainLockedNumbers"
+                      className="block text-sm font-semibold text-white/90"
+                    >
+                      Main locked (1–69)
+                    </label>
+                    <input
+                      id="mainLockedNumbers"
+                      type="text"
+                      value={mainLockedInput}
+                      onChange={(e) => setMainLockedInput(e.target.value)}
+                      placeholder="e.g. 13, 24"
+                      className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white shadow-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-red-400/30"
+                    />
+                    {mainLockedValidation.errors.length > 0 ? (
+                      <div className="mt-2 rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+                        {mainLockedValidation.errors.map((e) => (
+                          <div key={e}>{e}</div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="powerballLockedNumbers"
+                      className="block text-sm font-semibold text-white/90"
+                    >
+                      Powerball locked (1–26)
+                    </label>
+                    <input
+                      id="powerballLockedNumbers"
+                      type="text"
+                      value={powerballLockedInput}
+                      onChange={(e) => setPowerballLockedInput(e.target.value)}
+                      placeholder="e.g. 13, 24"
+                      className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white shadow-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-red-400/30"
+                    />
+                    {powerballLockedValidation.errors.length > 0 ? (
+                      <div className="mt-2 rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+                        {powerballLockedValidation.errors.map((e) => (
+                          <div key={e}>{e}</div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {lockedError ? (
+                    <div className="rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+                      {lockedError}
+                    </div>
+                  ) : mainLocked.length > 0 || powerballLocked.length > 0 ? (
+                    <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/70">
+                      <div>
+                        Main locked:{" "}
+                        <span className="font-semibold text-white">
+                          {mainLocked.length > 0 ? mainLocked.join(", ") : "—"}
+                        </span>
+                      </div>
+                      <div className="mt-1">
+                        Powerball locked:{" "}
+                        <span className="font-semibold text-white">
+                          {powerballLocked.length > 0
+                            ? powerballLocked.join(", ")
+                            : "—"}
+                        </span>
+                      </div>
+                    </div>
+                  ) : null}
 
                   <button
-                    type="button"
-                    onClick={() => handleCopyLine(idx)}
-                    className="text-sm font-semibold px-3 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 transition"
-                    title="Copy this line"
+                    onClick={() => {
+                      if (lockedError) return;
+                      setEditing(null);
+                      setEditValue("");
+                      setEditError(null);
+                      setCopied(null);
+                      setPicks(
+                        generatePicks(
+                          numLines,
+                          randomness,
+                          mainLocked,
+                          powerballLocked
+                        )
+                      );
+                    }}
+                    className="w-full rounded-xl bg-gradient-to-r from-red-500 via-red-500 to-orange-400 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-red-500/20 ring-1 ring-white/10 transition hover:brightness-110 active:brightness-95 disabled:opacity-60"
                   >
-                    Copy
-                    {copied === `line:${idx}` ? " ✓" : ""}
+                    Generate New Picks
                   </button>
                 </div>
               </div>
+            </section>
 
-              {editing?.lineIdx === idx && editError ? (
-                <div className="mt-2 text-sm text-red-700">{editError}</div>
-              ) : null}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="bg-linear-to-br from-white to-gray-50 rounded-lg shadow-lg p-6">
-        <button
-          onClick={() => setShowStats(!showStats)}
-          className="w-full text-left font-semibold text-lg text-gray-800 flex justify-between items-center"
-        >
-          <span>📊 Historical Data Statistics</span>
-          <span>{showStats ? "▼" : "▶"}</span>
-        </button>
-
-        {showStats && (
-          <div className="mt-4 space-y-4">
-            <div>
-              <h3 className="font-semibold text-gray-700 mb-2">
-                Most Frequent Main Numbers (Top 10):
-              </h3>
-              {topMain.length === 0 ? (
-                <div className="text-sm text-gray-600">
-                  No draw data loaded yet.
+            <section className="lg:col-span-8">
+              <div className="rounded-2xl bg-white/5 p-5 ring-1 ring-white/10 backdrop-blur">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold tracking-tight">
+                      Your picks
+                    </h2>
+                    <p className="mt-1 text-sm text-white/70">
+                      Click any ball to edit. Copy a single line or the full set.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCopyAll}
+                    className="inline-flex items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/90 transition hover:bg-white/10"
+                  >
+                    Copy all
+                    {copied === "all" ? " ✓" : ""}
+                  </button>
                 </div>
-              ) : (
-                <div className="grid grid-cols-5 gap-2">
-                  {topMain.map(([num, count]) => (
+
+                <div className="mt-5 space-y-4">
+                  {picks.map((pick, idx) => (
                     <div
-                      key={num}
-                      className="bg-blue-50 p-2 rounded text-center border border-blue-200"
+                      key={idx}
+                      className="rounded-2xl border border-white/10 bg-white/5 p-4 transition hover:bg-white/7"
                     >
-                      <div className="font-bold text-blue-700">{num}</div>
-                      <div className="text-xs text-gray-600">{count}x</div>
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-white/90">
+                          <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/10 ring-1 ring-white/10">
+                            {idx + 1}
+                          </span>
+                          <span>Pick</span>
+                        </div>
+
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <div className="flex gap-2">
+                            {pick.main.map((num, i) => {
+                              const isEditing =
+                                editing?.lineIdx === idx &&
+                                editing?.kind === "main" &&
+                                editing?.index === i;
+
+                              if (isEditing) {
+                                return (
+                                  <div
+                                    key={i}
+                                    className="h-12 w-12 rounded-full bg-white/10 ring-2 ring-red-400/40 flex items-center justify-center"
+                                  >
+                                    <input
+                                      autoFocus
+                                      type="number"
+                                      min={1}
+                                      max={69}
+                                      inputMode="numeric"
+                                      value={editValue}
+                                      onChange={(e) => setEditValue(e.target.value)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter") commitEdit();
+                                        if (e.key === "Escape") cancelEdit();
+                                      }}
+                                      onBlur={cancelEdit}
+                                      className="w-10 bg-transparent text-center text-sm font-bold text-white focus:outline-none"
+                                    />
+                                  </div>
+                                );
+                              }
+
+                              return (
+                                <button
+                                  key={i}
+                                  type="button"
+                                  title="Click to edit"
+                                  onClick={() => beginEdit(idx, "main", i)}
+                                  className="h-12 w-12 rounded-full bg-white/10 text-white font-bold ring-1 ring-white/10 transition hover:bg-white/15"
+                                >
+                                  {num.toString().padStart(2, "0")}
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          <span className="text-white/50 font-semibold">+</span>
+
+                          {(() => {
+                            const isEditingPb =
+                              editing?.lineIdx === idx && editing?.kind === "pb";
+                            if (isEditingPb) {
+                              return (
+                                <div className="h-12 w-12 rounded-full bg-gradient-to-b from-red-500 to-red-700 ring-2 ring-red-300/40 flex items-center justify-center shadow-lg shadow-red-500/15">
+                                  <input
+                                    autoFocus
+                                    type="number"
+                                    min={1}
+                                    max={26}
+                                    inputMode="numeric"
+                                    value={editValue}
+                                    onChange={(e) => setEditValue(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") commitEdit();
+                                      if (e.key === "Escape") cancelEdit();
+                                    }}
+                                    onBlur={cancelEdit}
+                                    className="w-10 bg-transparent text-center text-sm font-bold text-white focus:outline-none"
+                                  />
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <button
+                                type="button"
+                                title="Click to edit"
+                                onClick={() => beginEdit(idx, "pb", null)}
+                                className="h-12 w-12 rounded-full bg-gradient-to-b from-red-500 to-red-700 text-white font-extrabold ring-1 ring-red-300/30 shadow-lg shadow-red-500/15 transition hover:brightness-110"
+                              >
+                                {pick.powerball.toString().padStart(2, "0")}
+                              </button>
+                            );
+                          })()}
+
+                          <button
+                            type="button"
+                            onClick={() => handleCopyLine(idx)}
+                            className="inline-flex items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/90 transition hover:bg-white/10"
+                            title="Copy this line"
+                          >
+                            Copy
+                            {copied === `line:${idx}` ? " ✓" : ""}
+                          </button>
+                        </div>
+                      </div>
+
+                      {editing?.lineIdx === idx && editError ? (
+                        <div className="mt-2 text-sm text-red-200">
+                          {editError}
+                        </div>
+                      ) : null}
                     </div>
                   ))}
                 </div>
-              )}
-            </div>
-
-            <div>
-              <h3 className="font-semibold text-gray-700 mb-2">
-                Most Frequent Powerball Numbers (Top 5):
-              </h3>
-              {topPB.length === 0 ? (
-                <div className="text-sm text-gray-600">
-                  No draw data loaded yet.
-                </div>
-              ) : (
-                <div className="grid grid-cols-5 gap-2">
-                  {topPB.map(([num, count]) => (
-                    <div
-                      key={num}
-                      className="bg-red-50 p-2 rounded text-center border border-red-200"
-                    >
-                      <div className="font-bold text-red-700">{num}</div>
-                      <div className="text-xs text-gray-600">{count}x</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="bg-linear-to-br from-yellow-50 to-gray-50 p-4 rounded-lg border border-yellow-200 mt-4">
-              <p className="text-sm text-gray-700">
-                <strong>⚠️ Important Note:</strong> These picks are randomly
-                generated. While based on historical data analysis, every
-                Powerball drawing is independent and random. Past frequency does
-                not predict future results. Play responsibly and only spend what
-                you can afford!
-              </p>
-            </div>
+              </div>
+            </section>
           </div>
-        )}
-      </div>
 
-      <div className="mt-6 text-center text-sm text-gray-500">
-        <p>
-          Good luck! 🍀 Remember: The odds of winning the Powerball jackpot are
-          approximately 1 in 292 million.
-        </p>
+          <div className="mt-6 rounded-2xl bg-white/5 p-5 ring-1 ring-white/10 backdrop-blur">
+            <button
+              onClick={() => setShowStats(!showStats)}
+              className="w-full text-left font-semibold text-lg text-white flex justify-between items-center"
+            >
+              <span>📊 Historical Data Statistics</span>
+              <span className="text-white/70">{showStats ? "▼" : "▶"}</span>
+            </button>
+
+            {showStats && (
+              <div className="mt-4 space-y-4">
+                <div>
+                  <h3 className="font-semibold text-white/90 mb-2">
+                    Most Frequent Main Numbers (Top 10):
+                  </h3>
+                  {topMain.length === 0 ? (
+                    <div className="text-sm text-white/70">
+                      No draw data loaded yet.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-5 gap-2">
+                      {topMain.map(([num, count]) => (
+                        <div
+                          key={num}
+                          className="rounded-xl border border-white/10 bg-white/5 p-2 text-center"
+                        >
+                          <div className="font-extrabold text-white">
+                            {num}
+                          </div>
+                          <div className="text-xs text-white/60">{count}x</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <h3 className="font-semibold text-white/90 mb-2">
+                    Most Frequent Powerball Numbers (Top 5):
+                  </h3>
+                  {topPB.length === 0 ? (
+                    <div className="text-sm text-white/70">
+                      No draw data loaded yet.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-5 gap-2">
+                      {topPB.map(([num, count]) => (
+                        <div
+                          key={num}
+                          className="rounded-xl border border-white/10 bg-white/5 p-2 text-center"
+                        >
+                          <div className="font-extrabold text-white">
+                            {num}
+                          </div>
+                          <div className="text-xs text-white/60">{count}x</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <p className="text-sm text-white/70">
+                    <strong className="text-white">Note:</strong> Powerball is
+                    random. Historical frequency does not predict future results.
+                    Play responsibly.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <footer className="mt-10 text-center text-xs text-white/50">
+            Remember: jackpot odds are approximately 1 in 292 million.
+          </footer>
+        </div>
       </div>
     </div>
   );
