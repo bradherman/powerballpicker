@@ -744,9 +744,9 @@ const PowerballGenerator = () => {
                       className="rounded-full bg-white/5 px-3 py-1 ring-1 ring-white/10 text-white/80"
                       title={formatLatestResultInline(latestDraw) || undefined}
                     >
-                      <span className="font-semibold text-white/80">
+                      <span className="font-semibold text-white/80 mr-4">
                         Latest result
-                      </span>{" "}
+                      </span>
                       <span className="inline-flex items-center gap-1.5 align-middle">
                         {latestDraw.main.map((n, i) => (
                           <span
