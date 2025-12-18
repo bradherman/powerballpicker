@@ -91,8 +91,6 @@ const PowerballGenerator = () => {
       typeof window !== "undefined" &&
       new URLSearchParams(window.location.search).get("refreshJackpot") === "1";
 
-    if (jackpot && !refreshJackpot) return; // Already have jackpot
-
     let cancelled = false;
 
     (async () => {
@@ -116,10 +114,17 @@ const PowerballGenerator = () => {
       }
     })();
 
+    // Make the refresh param one-shot (prevents reloading / repeated refreshes when sharing the link).
+    if (refreshJackpot && typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("refreshJackpot");
+      window.history.replaceState({}, "", url.toString());
+    }
+
     return () => {
       cancelled = true;
     };
-  }, [jackpot]);
+  }, []);
 
   const analysis = useMemo(() => {
     const mainFreq = {};
@@ -794,11 +799,6 @@ const PowerballGenerator = () => {
                       <div className="mt-1 font-mono text-2xl font-extrabold text-amber-100">
                         {formatJackpot(jackpot.amount)}
                       </div>
-                      {jackpot.amount >= 1000000 && (
-                        <div className="mt-1 text-xs text-amber-200/70">
-                          ${(jackpot.amount / 1000000).toFixed(2)} Million
-                        </div>
-                      )}
                     </div>
                   ) : null}
 

@@ -387,7 +387,7 @@ export default {
     }
 
     if (request.method === "GET" && url.pathname === "/api/powerball/jackpot") {
-      // Try to fetch fresh jackpot if it's been more than 1 hour since last update
+      // Try to fetch fresh jackpot if it's been more than 5 minutes since last update
       const cached = await env.POWERBALL_KV.get(KV_JACKPOT_KEY, "json");
       const forceRefresh =
         url.searchParams.get("refresh") === "1" ||
@@ -396,7 +396,7 @@ export default {
         forceRefresh ||
         !cached ||
         !cached.updatedAt ||
-        Date.now() - new Date(cached.updatedAt).getTime() > 3600000; // 1 hour
+        Date.now() - new Date(cached.updatedAt).getTime() > 300000; // 5 min
 
       if (shouldRefresh) {
         try {
