@@ -1916,9 +1916,17 @@ const PowerballGenerator = () => {
               </div>
 
               {combinationsGenerated > 0 && (
-                <div className="mt-6 border-t border-white/10 pt-6 text-center">
-                  <div className="text-lg font-semibold text-white/90">
-                    {combinationsGenerated.toLocaleString()} lotto picks generated
+                <div className="mt-6 border-t border-white/10 pt-6">
+                  <div className="mx-auto max-w-md rounded-2xl border border-red-400/30 bg-gradient-to-br from-red-500/20 to-orange-500/20 px-6 py-4 text-center backdrop-blur ring-1 ring-red-400/20">
+                    <div className="text-[11px] font-semibold tracking-wide text-red-200/80 uppercase">
+                      Total Generated
+                    </div>
+                    <div className="mt-2 font-mono text-3xl font-extrabold text-white">
+                      {combinationsGenerated.toLocaleString()}
+                    </div>
+                    <div className="mt-1 text-sm font-semibold text-white/80">
+                      lotto picks generated
+                    </div>
                   </div>
                 </div>
               )}
