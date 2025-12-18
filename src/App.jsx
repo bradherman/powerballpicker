@@ -857,21 +857,24 @@ const PowerballGenerator = () => {
           <header className="mb-8">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <div className="inline-flex items-center gap-2 rounded-full bg-white/5 px-3 py-1 text-xs text-white/80 ring-1 ring-white/10">
-                  <span className="font-semibold tracking-wide">
-                    POWERBALL STUDIO
-                  </span>
-                  <span className="h-1 w-1 rounded-full bg-white/40" />
-                  <span>Weighted + editable</span>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="inline-flex items-center gap-2 rounded-full bg-white/5 px-3 py-1 text-xs text-white/80 ring-1 ring-white/10">
+                    <span className="font-semibold tracking-wide">
+                      POWERBALL STUDIO
+                    </span>
+                    <span className="h-1 w-1 rounded-full bg-white/40" />
+                    <span>Weighted + editable</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleOpenChecker}
+                    className="inline-flex items-center justify-center rounded-xl border border-white/20 bg-white/5 px-4 py-2 text-sm font-semibold text-white/90 ring-1 ring-white/10 transition hover:border-white/30 hover:bg-white/10 active:translate-y-px"
+                    title="Jump to the Number Checker"
+                  >
+                    Check my numbers
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleOpenChecker}
-                  className="ml-3 inline-flex items-center gap-2 rounded-full bg-white/5 px-3 py-1 text-xs font-semibold text-white/80 ring-1 ring-white/10 transition hover:bg-white/10"
-                  title="Jump to the Number Checker"
-                >
-                  Check numbers
-                </button>
 
                 <h1 className="mt-4 text-4xl font-extrabold tracking-tight">
                   Picks that feel handcrafted.
