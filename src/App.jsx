@@ -1010,14 +1010,6 @@ const PowerballGenerator = () => {
                   <span className="rounded-full bg-white/5 px-3 py-1 ring-1 ring-white/10 text-white/80">
                     Powerball: 1 of 26
                   </span>
-                  {combinationsGenerated > 0 && (
-                    <span className="rounded-full bg-gradient-to-r from-red-500/20 to-orange-500/20 px-3 py-1 ring-1 ring-red-400/30 text-white/90">
-                      <span className="font-semibold text-white">
-                        {combinationsGenerated.toLocaleString()}
-                      </span>{" "}
-                      combinations generated
-                    </span>
-                  )}
                   {drawsUpdatedAt && (
                     <span className="rounded-full bg-white/5 px-3 py-1 ring-1 ring-white/10 text-white/80">
                       Data updated{" "}
@@ -1142,7 +1134,11 @@ const PowerballGenerator = () => {
                     try {
                       const res = await fetch("/api/powerball/counter/increment", {
                         method: "POST",
-                        headers: { Accept: "application/json" },
+                        headers: {
+                          Accept: "application/json",
+                          "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({ count: numLines }),
                       });
                       if (res.ok) {
                         const payload = await res.json();
@@ -1894,6 +1890,14 @@ const PowerballGenerator = () => {
                   <div className="whitespace-nowrap">All rights reserved.</div>
                 </div>
               </div>
+
+              {combinationsGenerated > 0 && (
+                <div className="mt-6 border-t border-white/10 pt-6 text-center">
+                  <div className="text-lg font-semibold text-white/90">
+                    {combinationsGenerated.toLocaleString()} lotto picks generated
+                  </div>
+                </div>
+              )}
             </div>
           </footer>
         </div>

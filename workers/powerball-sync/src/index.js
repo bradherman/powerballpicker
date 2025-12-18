@@ -438,9 +438,12 @@ export default {
       url.pathname === "/api/powerball/counter/increment"
     ) {
       try {
+        const body = await request.json().catch(() => ({}));
+        const incrementBy = Math.max(1, Math.floor(Number(body.count) || 1));
+
         const current = await env.POWERBALL_KV.get(KV_COUNTER_KEY, "json");
         const currentCount = current?.count ?? 0;
-        const newCount = currentCount + 1;
+        const newCount = currentCount + incrementBy;
 
         await env.POWERBALL_KV.put(
           KV_COUNTER_KEY,
