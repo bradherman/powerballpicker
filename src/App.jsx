@@ -56,6 +56,7 @@ const PowerballGenerator = () => {
 
   const [draws, setDraws] = useState(() => fallbackDraws);
   const [drawsUpdatedAt, setDrawsUpdatedAt] = useState(null);
+  const [jackpot, setJackpot] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -74,6 +75,11 @@ const PowerballGenerator = () => {
         if (cancelled) return;
         setDraws(nextDraws);
         setDrawsUpdatedAt(payload?.updatedAt ?? null);
+
+        // Set jackpot if available
+        if (payload?.jackpot?.amount) {
+          setJackpot(payload.jackpot);
+        }
       } catch {
         // fall back to embedded data
       }
@@ -83,6 +89,33 @@ const PowerballGenerator = () => {
       cancelled = true;
     };
   }, []);
+
+  // Also fetch jackpot separately in case it wasn't in the draws response
+  useEffect(() => {
+    if (jackpot) return; // Already have jackpot
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch("/api/powerball/jackpot", {
+          headers: { Accept: "application/json" },
+        });
+        if (!res.ok || cancelled) return;
+
+        const payload = await res.json();
+        if (payload?.amount && !cancelled) {
+          setJackpot(payload);
+        }
+      } catch {
+        // Silently fail
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [jackpot]);
 
   const analysis = useMemo(() => {
     const mainFreq = {};
@@ -404,6 +437,25 @@ const PowerballGenerator = () => {
     return days > 0 ? `${days}d ${hh}:${mm}:${ss}` : `${hh}:${mm}:${ss}`;
   };
 
+  const formatJackpot = (amount) => {
+    if (!amount || typeof amount !== "number") return null;
+
+    if (amount >= 1000000000) {
+      // Billions
+      const billions = (amount / 1000000000).toFixed(2);
+      return `$${billions}B`;
+    } else if (amount >= 1000000) {
+      // Millions
+      const millions = (amount / 1000000).toFixed(1);
+      return `$${millions}M`;
+    } else if (amount >= 1000) {
+      // Thousands
+      const thousands = (amount / 1000).toFixed(0);
+      return `$${thousands}K`;
+    }
+    return `$${amount.toLocaleString()}`;
+  };
+
   useEffect(() => {
     const tick = () => {
       const nowMs = Date.now();
@@ -623,10 +675,6 @@ const PowerballGenerator = () => {
                     Next drawing
                   </div>
                   <div className="mt-2 text-sm text-white/70">
-                    <div>
-                      <span className="font-semibold text-white">ET:</span>{" "}
-                      {nextPowerballDraw.etLabel}
-                    </div>
                     <div className="mt-1">
                       <span className="font-semibold text-white">Local:</span>{" "}
                       {nextPowerballDraw.localLabel}
@@ -635,6 +683,21 @@ const PowerballGenerator = () => {
                       Draws: Mon / Wed / Sat at 10:59 PM ET.
                     </div>
                   </div>
+                  {jackpot?.amount ? (
+                    <div className="mt-3 rounded-xl border border-amber-400/30 bg-linear-to-br from-amber-500/20 to-orange-500/20 px-3 py-3 backdrop-blur">
+                      <div className="text-[11px] font-semibold tracking-wide text-amber-200/80">
+                        CURRENT JACKPOT
+                      </div>
+                      <div className="mt-1 font-mono text-2xl font-extrabold text-amber-100">
+                        {formatJackpot(jackpot.amount)}
+                      </div>
+                      {jackpot.amount >= 1000000 && (
+                        <div className="mt-1 text-xs text-amber-200/70">
+                          ${(jackpot.amount / 1000000).toFixed(2)} Million
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
                   <div className="mt-3 rounded-xl border border-white/10 bg-white/5 px-3 py-3">
                     <div className="text-[11px] font-semibold tracking-wide text-white/60">
                       COUNTDOWN

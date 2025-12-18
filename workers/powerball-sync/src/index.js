@@ -3,6 +3,7 @@ const DEFAULT_SOURCE_URL =
 
 const KV_DRAWS_KEY = "powerball:draws:v1";
 const KV_META_KEY = "powerball:meta:v1";
+const KV_JACKPOT_KEY = "powerball:jackpot:v1";
 
 function jsonResponse(body, init = {}) {
   const headers = new Headers(init.headers);
@@ -127,7 +128,10 @@ async function syncLatestDraws(env) {
   if (res.status === 304) {
     await env.POWERBALL_KV.put(
       KV_META_KEY,
-      JSON.stringify({ ...existingMeta, lastCheckedAt: new Date().toISOString() })
+      JSON.stringify({
+        ...existingMeta,
+        lastCheckedAt: new Date().toISOString(),
+      })
     );
     return { updated: false };
   }
@@ -142,7 +146,10 @@ async function syncLatestDraws(env) {
   const newEtag = res.headers.get("ETag");
   const now = new Date().toISOString();
 
-  await env.POWERBALL_KV.put(KV_DRAWS_KEY, JSON.stringify({ draws, updatedAt: now }));
+  await env.POWERBALL_KV.put(
+    KV_DRAWS_KEY,
+    JSON.stringify({ draws, updatedAt: now })
+  );
   await env.POWERBALL_KV.put(
     KV_META_KEY,
     JSON.stringify({
@@ -155,6 +162,116 @@ async function syncLatestDraws(env) {
   );
 
   return { updated: true, drawCount: draws.length };
+}
+
+async function fetchJackpot(env) {
+  // Try to fetch from powerball.com
+  try {
+    const res = await fetch("https://www.powerball.com/", {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; PowerballSync/1.0)",
+      },
+      cf: { cacheTtl: 0, cacheEverything: false },
+    });
+
+    if (!res.ok) {
+      throw new Error(`Failed to fetch powerball.com: ${res.status}`);
+    }
+
+    const html = await res.text();
+
+    // Try to find jackpot in various formats
+    // Look for patterns like "$XXX Million" or "$XXX,XXX,XXX"
+    const patterns = [
+      // Match "$XXX Million" format
+      /\$\s*([\d,]+)\s*million/i,
+      // Match "$XXX,XXX,XXX" format (full amount)
+      /\$\s*([\d,]{9,})/,
+      // Match JSON embedded in page
+      /"jackpot":\s*"([^"]+)"/i,
+      /"jackpotAmount":\s*"([^"]+)"/i,
+      /jackpot[:\s]+[\$]?([\d,]+(?:\s*million)?)/i,
+    ];
+
+    for (const pattern of patterns) {
+      const match = html.match(pattern);
+      if (match) {
+        let amount = match[1].replace(/,/g, "");
+        const isMillion = /million/i.test(match[0]);
+
+        if (isMillion) {
+          // Convert "XXX Million" to number
+          const millions = parseFloat(amount);
+          if (!isNaN(millions)) {
+            amount = Math.round(millions * 1000000);
+          }
+        } else {
+          amount = parseInt(amount, 10);
+        }
+
+        if (!isNaN(amount) && amount > 0) {
+          const now = new Date().toISOString();
+          await env.POWERBALL_KV.put(
+            KV_JACKPOT_KEY,
+            JSON.stringify({
+              amount,
+              updatedAt: now,
+              source: "powerball.com",
+            })
+          );
+          return { amount, updatedAt: now };
+        }
+      }
+    }
+
+    // Try to find JSON data in script tags
+    const scriptMatches = html.match(/<script[^>]*>([\s\S]*?)<\/script>/gi);
+    if (scriptMatches) {
+      for (const script of scriptMatches) {
+        try {
+          // Look for JSON objects with jackpot data
+          const jsonMatch = script.match(/\{[\s\S]*"jackpot"[\s\S]*\}/i);
+          if (jsonMatch) {
+            const jsonData = JSON.parse(jsonMatch[0]);
+            const jackpotValue =
+              jsonData.jackpot ||
+              jsonData.jackpotAmount ||
+              jsonData.currentJackpot;
+            if (jackpotValue) {
+              let amount = jackpotValue;
+              if (typeof amount === "string") {
+                amount = amount.replace(/[^0-9]/g, "");
+                amount = parseInt(amount, 10);
+              }
+              if (!isNaN(amount) && amount > 0) {
+                const now = new Date().toISOString();
+                await env.POWERBALL_KV.put(
+                  KV_JACKPOT_KEY,
+                  JSON.stringify({
+                    amount,
+                    updatedAt: now,
+                    source: "powerball.com",
+                  })
+                );
+                return { amount, updatedAt: now };
+              }
+            }
+          }
+        } catch {
+          // Continue to next script
+        }
+      }
+    }
+
+    throw new Error("Could not parse jackpot from powerball.com");
+  } catch (e) {
+    // If fetching fails, return cached value if available
+    const cached = await env.POWERBALL_KV.get(KV_JACKPOT_KEY, "json");
+    if (cached) {
+      return cached;
+    }
+    throw e;
+  }
 }
 
 export default {
@@ -191,6 +308,10 @@ export default {
 
       try {
         const result = await syncLatestDraws(env);
+        // Also try to fetch jackpot (non-blocking)
+        fetchJackpot(env).catch(() => {
+          // Silently fail - jackpot fetch is optional
+        });
         return jsonResponse({ ok: true, ...result });
       } catch (e) {
         return jsonResponse(
@@ -202,14 +323,61 @@ export default {
 
     if (request.method === "GET" && url.pathname === "/api/powerball/draws") {
       const stored = await env.POWERBALL_KV.get(KV_DRAWS_KEY, "json");
+      const jackpot = await env.POWERBALL_KV.get(KV_JACKPOT_KEY, "json");
+
       if (!stored) {
         return jsonResponse(
-          { draws: [], updatedAt: null, source: "kv", missing: true },
+          { draws: [], updatedAt: null, jackpot, source: "kv", missing: true },
           { status: 404 }
         );
       }
 
-      return jsonResponse(stored, {
+      return jsonResponse(
+        { ...stored, jackpot },
+        {
+          headers: {
+            "Cache-Control": "public, max-age=300",
+            "Access-Control-Allow-Origin": "*",
+          },
+        }
+      );
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/powerball/jackpot") {
+      // Try to fetch fresh jackpot if it's been more than 1 hour since last update
+      const cached = await env.POWERBALL_KV.get(KV_JACKPOT_KEY, "json");
+      const shouldRefresh =
+        !cached ||
+        !cached.updatedAt ||
+        Date.now() - new Date(cached.updatedAt).getTime() > 3600000; // 1 hour
+
+      if (shouldRefresh) {
+        try {
+          const fresh = await fetchJackpot(env);
+          return jsonResponse(fresh, {
+            headers: {
+              "Cache-Control": "public, max-age=300",
+              "Access-Control-Allow-Origin": "*",
+            },
+          });
+        } catch (e) {
+          // Return cached if available, even if stale
+          if (cached) {
+            return jsonResponse(cached, {
+              headers: {
+                "Cache-Control": "public, max-age=60",
+                "Access-Control-Allow-Origin": "*",
+              },
+            });
+          }
+          return jsonResponse(
+            { error: "Jackpot data unavailable" },
+            { status: 503 }
+          );
+        }
+      }
+
+      return jsonResponse(cached, {
         headers: {
           "Cache-Control": "public, max-age=300",
           "Access-Control-Allow-Origin": "*",
@@ -221,8 +389,13 @@ export default {
   },
 
   async scheduled(_event, env, ctx) {
-    ctx.waitUntil(syncLatestDraws(env));
+    ctx.waitUntil(
+      Promise.all([
+        syncLatestDraws(env),
+        fetchJackpot(env).catch(() => {
+          // Silently fail - jackpot fetch is optional
+        }),
+      ])
+    );
   },
 };
-
-
