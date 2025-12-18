@@ -127,7 +127,7 @@ const PowerballGenerator = () => {
     };
   }, []);
 
-  // Fetch combinations counter
+  // Fetch combinations counter and count initial picks
   useEffect(() => {
     let cancelled = false;
 
@@ -144,6 +144,29 @@ const PowerballGenerator = () => {
         }
       } catch {
         // Silently fail
+      }
+
+      // Count the initial 5 picks generated on page load (only once)
+      if (!initialPicksCountedRef.current && !cancelled) {
+        initialPicksCountedRef.current = true;
+        try {
+          const incrementRes = await fetch("/api/powerball/counter/increment", {
+            method: "POST",
+            headers: {
+              Accept: "application/json",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ count: 5 }),
+          });
+          if (incrementRes.ok && !cancelled) {
+            const incrementPayload = await incrementRes.json();
+            if (incrementPayload?.count != null) {
+              setCombinationsGenerated(incrementPayload.count);
+            }
+          }
+        } catch {
+          // Silently fail - counter is not critical
+        }
       }
     })();
 
@@ -302,6 +325,7 @@ const PowerballGenerator = () => {
   const [showStats, setShowStats] = useState(true);
   const [showChecker, setShowChecker] = useState(false);
   const checkerRef = useRef(null);
+  const initialPicksCountedRef = useRef(false);
   const [checkerInput, setCheckerInput] = useState("");
   const [checkerResults, setCheckerResults] = useState([]);
 
