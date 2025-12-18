@@ -731,10 +731,37 @@ const PowerballGenerator = () => {
                     </span>
                   )}
                   {latestDraw ? (
-                    <span className="rounded-full bg-white/5 px-3 py-1 ring-1 ring-white/10 text-white/80">
-                      Latest result{" "}
-                      <span className="font-mono font-semibold text-white">
-                        {formatLatestResultInline(latestDraw)}
+                    <span
+                      className="rounded-full bg-white/5 px-3 py-1 ring-1 ring-white/10 text-white/80"
+                      title={formatLatestResultInline(latestDraw) || undefined}
+                    >
+                      <span className="font-semibold text-white/80">
+                        Latest result
+                      </span>{" "}
+                      <span className="inline-flex items-center gap-1.5 align-middle">
+                        {latestDraw.main.map((n, i) => (
+                          <span
+                            key={`${n}-${i}`}
+                            className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white text-slate-900 font-extrabold text-[10px] ring-1 ring-white/20"
+                          >
+                            {String(n).padStart(2, "0")}
+                          </span>
+                        ))}
+                        <span className="text-white/40 font-semibold">+</span>
+                        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-linear-to-b from-red-500 to-red-700 text-white font-extrabold text-[10px] ring-1 ring-red-300/30">
+                          {String(latestDraw.powerball).padStart(2, "0")}
+                        </span>
+                        {Number.isFinite(latestDraw.multiplier) &&
+                        latestDraw.multiplier > 0 ? (
+                          <span className="ml-0.5 inline-flex items-center rounded-full border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] font-semibold text-white/75">
+                            x{latestDraw.multiplier}
+                          </span>
+                        ) : null}
+                        {formatDrawDateLabel(latestDraw) ? (
+                          <span className="ml-1 text-[10px] text-white/55">
+                            {formatDrawDateLabel(latestDraw)}
+                          </span>
+                        ) : null}
                       </span>
                     </span>
                   ) : null}

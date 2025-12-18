@@ -76,27 +76,80 @@ function toIntOrNull(value) {
   return Number.isFinite(n) ? n : null;
 }
 
-function parseJackpotAmount(text) {
+export function parseJackpotAmount(text) {
   const raw = String(text ?? "").trim();
   if (!raw) return null;
 
   const lower = raw.toLowerCase();
-  const numberMatch = lower.match(/(\d[\d,]*(?:\.\d+)?)/);
-  if (!numberMatch) return null;
+  // Prefer the number that follows a "$" if present (avoids picking up digits from classnames like "lh-1").
+  const dollarNumberMatch = lower.match(/\$\s*([\d,]+(?:\.\d+)?)/);
+  const anyNumberMatch = lower.match(/(\d[\d,]*(?:\.\d+)?)/);
+  const numericStr = (dollarNumberMatch?.[1] ?? anyNumberMatch?.[1]) || null;
+  if (!numericStr) return null;
 
-  const numeric = parseFloat(numberMatch[1].replace(/,/g, ""));
+  const numeric = parseFloat(numericStr.replace(/,/g, ""));
   if (!Number.isFinite(numeric) || numeric <= 0) return null;
 
   let multiplier = 1;
-  if (/\bbillion\b|\bbil\b/.test(lower) || /(\d)\s*b\b/.test(lower)) {
+  if (
+    /\bbillion\b|\bbil\b/.test(lower) ||
+    /(\d|\.)\s*b\b/.test(lower) ||
+    /\$\s*[\d,.]+\s*b\b/.test(lower)
+  ) {
     multiplier = 1_000_000_000;
-  } else if (/\bmillion\b/.test(lower) || /(\d)\s*m\b/.test(lower)) {
+  } else if (
+    /\bmillion\b/.test(lower) ||
+    /(\d|\.)\s*m\b/.test(lower) ||
+    /\$\s*[\d,.]+\s*m\b/.test(lower)
+  ) {
     multiplier = 1_000_000;
-  } else if (/\bthousand\b/.test(lower) || /(\d)\s*k\b/.test(lower)) {
+  } else if (
+    /\bthousand\b/.test(lower) ||
+    /(\d|\.)\s*k\b/.test(lower) ||
+    /\$\s*[\d,.]+\s*k\b/.test(lower)
+  ) {
     multiplier = 1_000;
   }
 
   return Math.round(numeric * multiplier);
+}
+
+export function extractJackpotAmountFromHtml(html) {
+  const text = String(html ?? "");
+  if (!text) return null;
+
+  // 1) Prefer the "Estimated Jackpot" section explicitly.
+  const estSectionPatterns = [
+    /Estimated\s+Jackpot[\s\S]{0,800}?\$\s*[\d,.]+\s*(?:Billion|Million|Thousand)\b/gi,
+    /Estimated\s+Jackpot[\s\S]{0,800}?\$\s*[\d,.]+\s*[BMK]\b/gi,
+  ];
+
+  const estAmounts = [];
+  for (const re of estSectionPatterns) {
+    for (const m of text.matchAll(re)) {
+      const amount = parseJackpotAmount(m[0]);
+      if (Number.isFinite(amount) && amount > 0) estAmounts.push(amount);
+    }
+  }
+  if (estAmounts.length > 0) return Math.max(...estAmounts);
+
+  // 2) Otherwise, parse all "$X Million/Billion/K" amounts on the page and take the largest.
+  const all = [];
+  const reAll = /\$\s*[\d,.]+\s*(?:billion|million|thousand|[BMK])\b/gi;
+  for (const m of text.matchAll(reAll)) {
+    const amount = parseJackpotAmount(m[0]);
+    if (Number.isFinite(amount) && amount > 0) all.push(amount);
+  }
+  if (all.length > 0) return Math.max(...all);
+
+  // 3) Fallback: full numeric "$1,234,567,890"
+  const full = text.match(/\$\s*([\d,]{9,})/);
+  if (full?.[1]) {
+    const n = Number.parseInt(full[1].replace(/,/g, ""), 10);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+
+  return null;
 }
 
 function normalizeSocrataRowsJson(payload) {
@@ -203,39 +256,18 @@ async function fetchJackpot(env) {
 
     const html = await res.text();
 
-    // Try to find jackpot in various formats
-    // Look for patterns like "$XXX Million" or "$XXX,XXX,XXX"
-    const patterns = [
-      // Match "$XXX Million" format
-      /\$\s*([\d,.]+)\s*million/i,
-      // Match "$X.XX Billion" format
-      /\$\s*([\d,.]+)\s*billion/i,
-      // Match "$XXX,XXX,XXX" format (full amount)
-      /\$\s*([\d,]{9,})/,
-      // Match JSON embedded in page
-      /"jackpot":\s*"([^"]+)"/i,
-      /"jackpotAmount":\s*"([^"]+)"/i,
-      /jackpot[:\s]+[\$]?([\d,.]+(?:\s*(?:million|billion))?)/i,
-    ];
-
-    for (const pattern of patterns) {
-      const match = html.match(pattern);
-      if (match) {
-        const amount =
-          parseJackpotAmount(match[0]) ?? parseJackpotAmount(match[1]);
-        if (Number.isFinite(amount) && amount > 0) {
-          const now = new Date().toISOString();
-          await env.POWERBALL_KV.put(
-            KV_JACKPOT_KEY,
-            JSON.stringify({
-              amount,
-              updatedAt: now,
-              source: "powerball.com",
-            })
-          );
-          return { amount, updatedAt: now };
-        }
-      }
+    const amountFromHtml = extractJackpotAmountFromHtml(html);
+    if (Number.isFinite(amountFromHtml) && amountFromHtml > 0) {
+      const now = new Date().toISOString();
+      await env.POWERBALL_KV.put(
+        KV_JACKPOT_KEY,
+        JSON.stringify({
+          amount: amountFromHtml,
+          updatedAt: now,
+          source: "powerball.com",
+        })
+      );
+      return { amount: amountFromHtml, updatedAt: now };
     }
 
     // Try to find JSON data in script tags
@@ -356,7 +388,11 @@ export default {
     if (request.method === "GET" && url.pathname === "/api/powerball/jackpot") {
       // Try to fetch fresh jackpot if it's been more than 1 hour since last update
       const cached = await env.POWERBALL_KV.get(KV_JACKPOT_KEY, "json");
+      const forceRefresh =
+        url.searchParams.get("refresh") === "1" ||
+        url.searchParams.get("refresh") === "true";
       const shouldRefresh =
+        forceRefresh ||
         !cached ||
         !cached.updatedAt ||
         Date.now() - new Date(cached.updatedAt).getTime() > 3600000; // 1 hour
