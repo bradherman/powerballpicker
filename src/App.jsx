@@ -266,6 +266,70 @@ const PowerballGenerator = () => {
   const [copied, setCopied] = useState(null);
   const [showStats, setShowStats] = useState(true);
 
+  const latestDraw = useMemo(() => {
+    if (!Array.isArray(draws) || draws.length === 0) return null;
+
+    const candidates = draws
+      .map((d) => {
+        const main = Array.isArray(d?.main) ? d.main : [];
+        const powerball = d?.powerball;
+        const hasValidNums =
+          main.length === 5 &&
+          main.every((n) => Number.isFinite(n)) &&
+          Number.isFinite(powerball);
+
+        if (!hasValidNums) return null;
+
+        const rawDate = d?.drawDate;
+        const ms =
+          rawDate instanceof Date
+            ? rawDate.getTime()
+            : typeof rawDate === "string" || typeof rawDate === "number"
+            ? Date.parse(String(rawDate))
+            : Number.NaN;
+
+        return { ...d, _drawDateMs: Number.isFinite(ms) ? ms : null };
+      })
+      .filter(Boolean);
+
+    if (candidates.length === 0) return null;
+
+    const anyHasDate = candidates.some((d) => d._drawDateMs != null);
+    if (!anyHasDate) return candidates[0];
+
+    return candidates.reduce((best, cur) => {
+      if (best?._drawDateMs == null) return cur;
+      if (cur?._drawDateMs == null) return best;
+      return cur._drawDateMs > best._drawDateMs ? cur : best;
+    }, candidates[0]);
+  }, [draws]);
+
+  const formatDrawDateLabel = (draw) => {
+    const ms = draw?._drawDateMs;
+    if (ms == null) return null;
+    const dt = new Date(ms);
+    if (!Number.isFinite(dt.getTime())) return null;
+    return new Intl.DateTimeFormat(undefined, {
+      weekday: "short",
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    }).format(dt);
+  };
+
+  const formatLatestResultInline = (draw) => {
+    if (!draw) return null;
+    const main = draw.main.map((n) => String(n).padStart(2, "0")).join(" ");
+    const pb = String(draw.powerball).padStart(2, "0");
+    const mult =
+      Number.isFinite(draw.multiplier) && draw.multiplier > 0
+        ? ` (x${draw.multiplier})`
+        : "";
+    const date = formatDrawDateLabel(draw);
+    const datePart = date ? ` • ${date}` : "";
+    return `${main} + ${pb}${mult}${datePart}`;
+  };
+
   const getEtParts = (date) => {
     const dtf = new Intl.DateTimeFormat("en-US", {
       timeZone: "America/New_York",
@@ -666,6 +730,14 @@ const PowerballGenerator = () => {
                       </span>
                     </span>
                   )}
+                  {latestDraw ? (
+                    <span className="rounded-full bg-white/5 px-3 py-1 ring-1 ring-white/10 text-white/80">
+                      Latest result{" "}
+                      <span className="font-mono font-semibold text-white">
+                        {formatLatestResultInline(latestDraw)}
+                      </span>
+                    </span>
+                  ) : null}
                 </div>
               </div>
 
@@ -698,6 +770,7 @@ const PowerballGenerator = () => {
                       )}
                     </div>
                   ) : null}
+
                   <div className="mt-3 rounded-xl border border-white/10 bg-white/5 px-3 py-3">
                     <div className="text-[11px] font-semibold tracking-wide text-white/60">
                       COUNTDOWN

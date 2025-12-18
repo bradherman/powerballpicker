@@ -76,6 +76,29 @@ function toIntOrNull(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function parseJackpotAmount(text) {
+  const raw = String(text ?? "").trim();
+  if (!raw) return null;
+
+  const lower = raw.toLowerCase();
+  const numberMatch = lower.match(/(\d[\d,]*(?:\.\d+)?)/);
+  if (!numberMatch) return null;
+
+  const numeric = parseFloat(numberMatch[1].replace(/,/g, ""));
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+
+  let multiplier = 1;
+  if (/\bbillion\b|\bbil\b/.test(lower) || /(\d)\s*b\b/.test(lower)) {
+    multiplier = 1_000_000_000;
+  } else if (/\bmillion\b/.test(lower) || /(\d)\s*m\b/.test(lower)) {
+    multiplier = 1_000_000;
+  } else if (/\bthousand\b/.test(lower) || /(\d)\s*k\b/.test(lower)) {
+    multiplier = 1_000;
+  }
+
+  return Math.round(numeric * multiplier);
+}
+
 function normalizeSocrataRowsJson(payload) {
   const columns = payload?.meta?.view?.columns ?? payload?.meta?.columns ?? [];
   const data = payload?.data ?? [];
@@ -184,32 +207,23 @@ async function fetchJackpot(env) {
     // Look for patterns like "$XXX Million" or "$XXX,XXX,XXX"
     const patterns = [
       // Match "$XXX Million" format
-      /\$\s*([\d,]+)\s*million/i,
+      /\$\s*([\d,.]+)\s*million/i,
+      // Match "$X.XX Billion" format
+      /\$\s*([\d,.]+)\s*billion/i,
       // Match "$XXX,XXX,XXX" format (full amount)
       /\$\s*([\d,]{9,})/,
       // Match JSON embedded in page
       /"jackpot":\s*"([^"]+)"/i,
       /"jackpotAmount":\s*"([^"]+)"/i,
-      /jackpot[:\s]+[\$]?([\d,]+(?:\s*million)?)/i,
+      /jackpot[:\s]+[\$]?([\d,.]+(?:\s*(?:million|billion))?)/i,
     ];
 
     for (const pattern of patterns) {
       const match = html.match(pattern);
       if (match) {
-        let amount = match[1].replace(/,/g, "");
-        const isMillion = /million/i.test(match[0]);
-
-        if (isMillion) {
-          // Convert "XXX Million" to number
-          const millions = parseFloat(amount);
-          if (!isNaN(millions)) {
-            amount = Math.round(millions * 1000000);
-          }
-        } else {
-          amount = parseInt(amount, 10);
-        }
-
-        if (!isNaN(amount) && amount > 0) {
+        const amount =
+          parseJackpotAmount(match[0]) ?? parseJackpotAmount(match[1]);
+        if (Number.isFinite(amount) && amount > 0) {
           const now = new Date().toISOString();
           await env.POWERBALL_KV.put(
             KV_JACKPOT_KEY,
@@ -238,12 +252,8 @@ async function fetchJackpot(env) {
               jsonData.jackpotAmount ||
               jsonData.currentJackpot;
             if (jackpotValue) {
-              let amount = jackpotValue;
-              if (typeof amount === "string") {
-                amount = amount.replace(/[^0-9]/g, "");
-                amount = parseInt(amount, 10);
-              }
-              if (!isNaN(amount) && amount > 0) {
+              const amount = parseJackpotAmount(jackpotValue);
+              if (Number.isFinite(amount) && amount > 0) {
                 const now = new Date().toISOString();
                 await env.POWERBALL_KV.put(
                   KV_JACKPOT_KEY,
