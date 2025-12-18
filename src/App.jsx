@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 const PowerballGenerator = () => {
   const rawData = useMemo(
@@ -274,6 +274,10 @@ const PowerballGenerator = () => {
   const [editError, setEditError] = useState(null);
   const [copied, setCopied] = useState(null);
   const [showStats, setShowStats] = useState(true);
+  const [showChecker, setShowChecker] = useState(false);
+  const checkerRef = useRef(null);
+  const [checkerInput, setCheckerInput] = useState("");
+  const [checkerResults, setCheckerResults] = useState([]);
 
   const latestDraw = useMemo(() => {
     if (!Array.isArray(draws) || draws.length === 0) return null;
@@ -312,6 +316,11 @@ const PowerballGenerator = () => {
       return cur._drawDateMs > best._drawDateMs ? cur : best;
     }, candidates[0]);
   }, [draws]);
+
+  const latestDrawMainSet = useMemo(
+    () => new Set(latestDraw?.main ?? []),
+    [latestDraw]
+  );
 
   const formatDrawDateLabel = (draw) => {
     const ms = draw?._drawDateMs;
@@ -552,6 +561,149 @@ const PowerballGenerator = () => {
     return `${main} ${pb}`;
   };
 
+  const parseUserLine = (line) => {
+    const trimmed = String(line ?? "").trim();
+    if (!trimmed) return { ok: false, error: "Empty line" };
+
+    // Accept any non-number separators (spaces, commas, hyphens, plus signs, etc).
+    const parts = trimmed.match(/\d+/g) ?? [];
+    if (parts.length !== 6) {
+      return { ok: false, error: "Expected 6 numbers (5 + Powerball)." };
+    }
+
+    const nums = parts.map((p) => Number.parseInt(p, 10));
+    if (nums.some((n) => !Number.isFinite(n))) {
+      return { ok: false, error: "All entries must be numbers." };
+    }
+
+    const main = nums.slice(0, 5);
+    const pb = nums[5];
+
+    if (main.some((n) => n < 1 || n > 69)) {
+      return { ok: false, error: "Main numbers must be 1–69." };
+    }
+    if (pb < 1 || pb > 26) {
+      return { ok: false, error: "Powerball must be 1–26." };
+    }
+
+    const uniq = new Set(main);
+    if (uniq.size !== main.length) {
+      return { ok: false, error: "Main numbers must be unique." };
+    }
+
+    return {
+      ok: true,
+      main: main.slice().sort((a, b) => a - b),
+      powerball: pb,
+    };
+  };
+
+  const formatPrize = (value) => {
+    if (value === "JACKPOT") return "Jackpot";
+    const amount = Number(value);
+    if (!Number.isFinite(amount) || amount <= 0) return "$0";
+    if (amount >= 1000000000) return `$${(amount / 1000000000).toFixed(2)}B`;
+    if (amount >= 1000000) {
+      const decimals = amount % 1000000 === 0 ? 0 : 1;
+      return `$${(amount / 1000000).toFixed(decimals)}M`;
+    }
+    if (amount >= 1000) return `$${amount.toLocaleString()}`;
+    return `$${amount}`;
+  };
+
+  const isWinningPrize = (value) => {
+    if (value === "JACKPOT") return true;
+    const amount = Number(value);
+    return Number.isFinite(amount) && amount > 0;
+  };
+
+  const computePrize = (whiteMatches, pbMatch, powerPlayMultiplier) => {
+    // Hard-coded from https://www.powerball.com/powerball-prize-chart
+    // Power Play does not multiply the Jackpot. Match-5 (no PB) is always $2M with PP (regardless of multiplier).
+    const baseTable = {
+      "5-1": "JACKPOT",
+      "5-0": 1000000,
+      "4-1": 50000,
+      "4-0": 100,
+      "3-1": 100,
+      "3-0": 7,
+      "2-1": 7,
+      "1-1": 4,
+      "0-1": 4,
+    };
+
+    const key = `${whiteMatches}-${pbMatch ? 1 : 0}`;
+    const base = baseTable[key] ?? 0;
+
+    if (powerPlayMultiplier == null) {
+      return { base, withPowerPlay: null };
+    }
+
+    const m = Number(powerPlayMultiplier);
+    const validM = Number.isFinite(m) && m >= 2 ? m : null;
+    if (!validM) return { base, withPowerPlay: null };
+
+    if (base === "JACKPOT") return { base, withPowerPlay: "JACKPOT" };
+    if (base === 0) return { base: 0, withPowerPlay: 0 };
+    if (key === "5-0") return { base, withPowerPlay: 2000000 };
+    return { base, withPowerPlay: base * validM };
+  };
+
+  const handleOpenChecker = () => {
+    setShowChecker(true);
+    requestAnimationFrame(() => {
+      checkerRef.current?.scrollIntoView?.({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  };
+
+  const handleCheckNumbers = () => {
+    const lines = String(checkerInput ?? "")
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+
+    if (!latestDraw) {
+      setCheckerResults([
+        {
+          raw: "",
+          ok: false,
+          error: "No recent draw loaded yet — refresh after data loads.",
+        },
+      ]);
+      return;
+    }
+
+    const winningSet = new Set(latestDraw.main);
+    const pp = latestDraw.multiplier;
+
+    const next = lines.map((raw) => {
+      const parsed = parseUserLine(raw);
+      if (!parsed.ok) return { raw, ok: false, error: parsed.error };
+
+      const whiteMatches = parsed.main.reduce(
+        (acc, n) => acc + (winningSet.has(n) ? 1 : 0),
+        0
+      );
+      const pbMatch = parsed.powerball === latestDraw.powerball;
+      const prize = computePrize(whiteMatches, pbMatch, pp);
+
+      return {
+        raw,
+        ok: true,
+        main: parsed.main,
+        powerball: parsed.powerball,
+        whiteMatches,
+        pbMatch,
+        prize,
+      };
+    });
+
+    setCheckerResults(next);
+  };
+
   const copyToClipboard = async (text) => {
     if (navigator?.clipboard?.writeText) {
       await navigator.clipboard.writeText(text);
@@ -712,6 +864,14 @@ const PowerballGenerator = () => {
                   <span className="h-1 w-1 rounded-full bg-white/40" />
                   <span>Weighted + editable</span>
                 </div>
+                <button
+                  type="button"
+                  onClick={handleOpenChecker}
+                  className="ml-3 inline-flex items-center gap-2 rounded-full bg-white/5 px-3 py-1 text-xs font-semibold text-white/80 ring-1 ring-white/10 transition hover:bg-white/10"
+                  title="Jump to the Number Checker"
+                >
+                  Check numbers
+                </button>
 
                 <h1 className="mt-4 text-4xl font-extrabold tracking-tight">
                   Picks that feel handcrafted.
@@ -1322,6 +1482,155 @@ const PowerballGenerator = () => {
                     results. Play responsibly.
                   </p>
                 </div>
+              </div>
+            )}
+          </div>
+
+          <div
+            ref={checkerRef}
+            className="mt-6 rounded-2xl bg-white/5 p-5 ring-1 ring-white/10 backdrop-blur"
+          >
+            <button
+              onClick={() => setShowChecker((v) => !v)}
+              className="w-full text-left font-semibold text-lg text-white flex justify-between items-center"
+            >
+              <span>✅ Number Checker</span>
+              <span className="text-white/70">{showChecker ? "▼" : "▶"}</span>
+            </button>
+
+            {showChecker && (
+              <div className="mt-4 space-y-4">
+                <div className="text-sm text-white/70">
+                  Paste one line per play. Supports spaces, hyphens, or commas.
+                </div>
+
+                <textarea
+                  value={checkerInput}
+                  onChange={(e) => setCheckerInput(e.target.value)}
+                  rows={5}
+                  placeholder={
+                    "4 15 67 23 18 10\n4-15-22-11-21-10\n4,15,22,11,21,10"
+                  }
+                  className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 font-mono text-sm text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-red-400/30"
+                />
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleCheckNumbers}
+                    className="inline-flex items-center justify-center rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold text-white/90 ring-1 ring-white/10 transition hover:bg-white/15"
+                  >
+                    Check
+                  </button>
+                  {latestDraw ? (
+                    <div className="text-xs text-white/60">
+                      Using latest draw Power Play:{" "}
+                      <span className="font-semibold text-white/80">
+                        {Number.isFinite(latestDraw.multiplier) &&
+                        latestDraw.multiplier > 0
+                          ? `x${latestDraw.multiplier}`
+                          : "—"}
+                      </span>
+                    </div>
+                  ) : null}
+                </div>
+
+                {checkerResults.length > 0 ? (
+                  <div className="space-y-3">
+                    {checkerResults.map((r, idx) => (
+                      <div
+                        key={`${idx}-${r.raw}`}
+                        className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                      >
+                        {!r.ok ? (
+                          <div className="text-sm text-red-200">
+                            {r.raw ? (
+                              <div className="font-mono text-white/80">
+                                {r.raw}
+                              </div>
+                            ) : null}
+                            <div className="mt-1">{r.error}</div>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <div className="flex items-center gap-1.5">
+                                {r.main.map((n, i) => (
+                                  <div
+                                    key={`${n}-${i}`}
+                                    className={[
+                                      "h-10 w-10 rounded-full bg-white text-slate-900 font-extrabold text-xs flex items-center justify-center",
+                                      latestDrawMainSet.has(n)
+                                        ? "ring-4 ring-inset ring-emerald-400/90 shadow-inner"
+                                        : "ring-1 ring-white/20",
+                                    ].join(" ")}
+                                    title="Main ball"
+                                  >
+                                    {String(n).padStart(2, "0")}
+                                  </div>
+                                ))}
+                              </div>
+                              <span className="text-white/40 font-semibold">
+                                +
+                              </span>
+                              <div
+                                className={[
+                                  "h-10 w-10 rounded-full bg-linear-to-b from-red-500 to-red-700 text-white font-extrabold text-xs flex items-center justify-center",
+                                  latestDraw?.powerball === r.powerball
+                                    ? "ring-4 ring-inset ring-emerald-200 shadow-inner"
+                                    : "ring-1 ring-red-300/30",
+                                ].join(" ")}
+                                title="Powerball"
+                              >
+                                {String(r.powerball).padStart(2, "0")}
+                              </div>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-2 text-sm">
+                              <span
+                                className={[
+                                  "rounded-full border px-3 py-1",
+                                  isWinningPrize(r.prize.base)
+                                    ? "border-emerald-400/30 bg-emerald-500/15 text-emerald-100"
+                                    : "border-white/10 bg-white/5 text-white/80",
+                                ].join(" ")}
+                              >
+                                No PP:{" "}
+                                <span className="font-semibold text-white">
+                                  {formatPrize(r.prize.base)}
+                                </span>
+                              </span>
+                              {r.prize.withPowerPlay != null ? (
+                                <span
+                                  className={[
+                                    "rounded-full border px-3 py-1",
+                                    isWinningPrize(r.prize.withPowerPlay)
+                                      ? "border-emerald-400/30 bg-emerald-500/15 text-emerald-100"
+                                      : "border-white/10 bg-white/5 text-white/80",
+                                  ].join(" ")}
+                                >
+                                  With PP{" "}
+                                  {Number.isFinite(latestDraw?.multiplier) &&
+                                  latestDraw.multiplier > 0
+                                    ? `(x${latestDraw.multiplier})`
+                                    : ""}
+                                  :{" "}
+                                  <span className="font-semibold text-white">
+                                    {formatPrize(r.prize.withPowerPlay)}
+                                  </span>
+                                </span>
+                              ) : (
+                                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-white/60">
+                                  With PP: —
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             )}
           </div>
