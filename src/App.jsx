@@ -704,6 +704,96 @@ const PowerballGenerator = () => {
     setCheckerResults(next);
   };
 
+  const POWERBALL_JACKPOT_ODDS_ONE_IN = 292201338; // per powerball.com prize chart
+
+  const absurdButMoreLikelyFacts = useMemo(
+    () => [
+      {
+        label: "be struck by lightning in your lifetime",
+        oneIn: 15300,
+        sourceLabel: "Britannica",
+        sourceUrl:
+          "https://www.britannica.com/question/What-are-the-chances-of-being-struck-by-lightning",
+      },
+      {
+        label: "be killed by an asteroid impact",
+        oneIn: 74800000,
+        sourceLabel: "TIME",
+        sourceUrl:
+          "https://time.com/4171474/powerball-lottery-more-likely-win/",
+      },
+      {
+        label: "become a movie star",
+        oneIn: 1500000,
+        sourceLabel: "TIME",
+        sourceUrl:
+          "https://time.com/4171474/powerball-lottery-more-likely-win/",
+      },
+      {
+        label: "bowl a perfect game (300)",
+        oneIn: 11500,
+        sourceLabel: "TIME",
+        sourceUrl:
+          "https://time.com/4171474/powerball-lottery-more-likely-win/",
+      },
+      {
+        label: "be dealt a royal flush in poker",
+        oneIn: 649740,
+        sourceLabel: "Wikipedia",
+        sourceUrl: "https://en.wikipedia.org/wiki/Royal_flush",
+      },
+      {
+        label: "be attacked by a shark",
+        oneIn: 11500000,
+        sourceLabel: "UC Berkeley (Aldous)",
+        sourceUrl:
+          "https://www.stat.berkeley.edu/~aldous/157/Papers/powerball-2.pdf",
+      },
+      {
+        label: "be killed by a vending machine",
+        oneIn: 112000000,
+        sourceLabel: "UC Berkeley (Aldous)",
+        sourceUrl:
+          "https://www.stat.berkeley.edu/~aldous/157/Papers/powerball-2.pdf",
+      },
+      {
+        label: "be drafted by an NBA team",
+        oneIn: 6800000,
+        sourceLabel: "UC Berkeley (Aldous)",
+        sourceUrl:
+          "https://www.stat.berkeley.edu/~aldous/157/Papers/powerball-2.pdf",
+      },
+      {
+        label: "have an IQ of 190 or greater",
+        oneIn: 107000000,
+        sourceLabel: "UC Berkeley (Aldous)",
+        sourceUrl:
+          "https://www.stat.berkeley.edu/~aldous/157/Papers/powerball-2.pdf",
+      },
+      {
+        label: "be struck by lightning while drowning",
+        oneIn: 183000000,
+        sourceLabel: "UC Berkeley (Aldous)",
+        sourceUrl:
+          "https://www.stat.berkeley.edu/~aldous/157/Papers/powerball-2.pdf",
+      },
+      {
+        label: "die from chronic constipation",
+        oneIn: 2200000,
+        sourceLabel: "TIME",
+        sourceUrl:
+          "https://time.com/4171474/powerball-lottery-more-likely-win/",
+      },
+    ],
+    []
+  );
+
+  const absurdFactOfTheDay = useMemo(() => {
+    const facts = absurdButMoreLikelyFacts;
+    if (!facts.length) return null;
+    return facts[Math.floor(Math.random() * facts.length)];
+  }, [absurdButMoreLikelyFacts]);
+
   const copyToClipboard = async (text) => {
     if (navigator?.clipboard?.writeText) {
       await navigator.clipboard.writeText(text);
@@ -1638,8 +1728,123 @@ const PowerballGenerator = () => {
             )}
           </div>
 
-          <footer className="mt-10 text-center text-xs text-white/50">
-            Remember: jackpot odds are approximately 1 in 292 million.
+          <footer className="mt-10">
+            <div className="rounded-2xl bg-white/5 p-5 ring-1 ring-white/10 backdrop-blur">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-2">
+                  <div className="text-sm font-semibold text-white/80">
+                    Vibe coded by Brad Herman
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3 text-xs text-white/60">
+                    <a
+                      className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 font-semibold text-white/80 transition hover:bg-white/10"
+                      href="https://bherms.com"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      bherms.com
+                    </a>
+                    <a
+                      className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 font-semibold text-white/80 transition hover:bg-white/10"
+                      href="https://github.com/bradherman/powerballpicker"
+                      target="_blank"
+                      rel="noreferrer"
+                      aria-label="GitHub repository"
+                      title="GitHub repository"
+                    >
+                      <svg
+                        aria-hidden="true"
+                        viewBox="0 0 24 24"
+                        className="h-4 w-4 fill-white/80"
+                      >
+                        <path d="M12 .5C5.73.5.75 5.73.75 12.2c0 5.2 3.44 9.61 8.2 11.17.6.12.82-.27.82-.58v-2.05c-3.34.75-4.04-1.46-4.04-1.46-.54-1.43-1.32-1.81-1.32-1.81-1.08-.77.08-.76.08-.76 1.2.09 1.83 1.28 1.83 1.28 1.06 1.9 2.78 1.35 3.46 1.03.11-.8.41-1.35.75-1.66-2.67-.32-5.48-1.4-5.48-6.21 0-1.37.46-2.49 1.22-3.37-.12-.32-.53-1.6.12-3.34 0 0 1.01-.34 3.3 1.29a11.1 11.1 0 0 1 3-.42c1.02 0 2.05.15 3 .42 2.28-1.63 3.29-1.29 3.29-1.29.65 1.74.24 3.02.12 3.34.76.88 1.22 2 1.22 3.37 0 4.82-2.82 5.89-5.5 6.2.42.39.8 1.16.8 2.35v3.47c0 .32.22.7.83.58 4.75-1.56 8.18-5.97 8.18-11.17C23.25 5.73 18.27.5 12 .5z" />
+                      </svg>
+                      Repo
+                    </a>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2 sm:items-end">
+                  <div className="text-xs font-semibold tracking-wide text-white/60">
+                    TIP ME
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <a
+                      className="inline-flex items-center justify-center rounded-xl border border-white/20 bg-white/5 px-4 py-2 text-sm font-semibold text-white/90 ring-1 ring-white/10 transition hover:border-white/30 hover:bg-white/10"
+                      href="https://venmo.com/u/bherms"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Venmo @bherms
+                    </a>
+                    <a
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center justify-center rounded-xl border border-white/20 bg-white/5 px-4 py-2 text-sm font-semibold text-white/90 ring-1 ring-white/10 transition hover:border-white/30 hover:bg-white/10"
+                      href="https://paypal.me/bherms86?locale.x=en_US&country.x=US"
+                    >
+                      PayPal
+                    </a>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 flex flex-col gap-2 border-t border-white/10 pt-4 text-xs text-white/50 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-2">
+                  <div>
+                    <span className="font-semibold text-white/70">
+                      Disclaimer:
+                    </span>{" "}
+                    This site is for entertainment/informational purposes only
+                    and is not affiliated with or endorsed by Powerball or any
+                    lottery. This is not financial advice, and we’re not
+                    advising you to gamble. The odds are terrible—please play
+                    responsibly.
+                  </div>
+
+                  {absurdFactOfTheDay ? (
+                    <div className="text-white/55">
+                      Fun fact: you’re more likely to{" "}
+                      <a
+                        className="font-semibold text-white/70 underline decoration-white/20 underline-offset-2 hover:decoration-white/40"
+                        href={absurdFactOfTheDay.sourceUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        title={`${absurdFactOfTheDay.sourceLabel} source`}
+                      >
+                        {absurdFactOfTheDay.label}
+                      </a>{" "}
+                      (about 1 in{" "}
+                      <span className="font-semibold text-white/70">
+                        {absurdFactOfTheDay.oneIn.toLocaleString()}
+                      </span>
+                      ) than win the{" "}
+                      <a
+                        className="underline decoration-white/20 underline-offset-2 hover:decoration-white/40"
+                        href="https://www.powerball.com/powerball-prize-chart"
+                        target="_blank"
+                        rel="noreferrer"
+                        title="Powerball prize chart / odds"
+                      >
+                        Powerball jackpot
+                      </a>{" "}
+                      (1 in{" "}
+                      <span className="font-semibold text-white/70">
+                        {POWERBALL_JACKPOT_ODDS_ONE_IN.toLocaleString()}
+                      </span>
+                      ).
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="sm:text-right flex flex-col gap-2">
+                  <div className="whitespace-nowrap">
+                    © {new Date().getFullYear()} Brad Herman.
+                  </div>
+                  <div className="whitespace-nowrap">All rights reserved.</div>
+                </div>
+              </div>
+            </div>
           </footer>
         </div>
       </div>
