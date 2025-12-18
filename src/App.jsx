@@ -57,6 +57,7 @@ const PowerballGenerator = () => {
   const [draws, setDraws] = useState(() => fallbackDraws);
   const [drawsUpdatedAt, setDrawsUpdatedAt] = useState(null);
   const [jackpot, setJackpot] = useState(null);
+  const [combinationsGenerated, setCombinationsGenerated] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -120,6 +121,31 @@ const PowerballGenerator = () => {
       url.searchParams.delete("refreshJackpot");
       window.history.replaceState({}, "", url.toString());
     }
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Fetch combinations counter
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch("/api/powerball/counter", {
+          headers: { Accept: "application/json" },
+        });
+        if (!res.ok || cancelled) return;
+
+        const payload = await res.json();
+        if (payload?.count != null && !cancelled) {
+          setCombinationsGenerated(payload.count);
+        }
+      } catch {
+        // Silently fail
+      }
+    })();
 
     return () => {
       cancelled = true;
@@ -984,6 +1010,14 @@ const PowerballGenerator = () => {
                   <span className="rounded-full bg-white/5 px-3 py-1 ring-1 ring-white/10 text-white/80">
                     Powerball: 1 of 26
                   </span>
+                  {combinationsGenerated > 0 && (
+                    <span className="rounded-full bg-gradient-to-r from-red-500/20 to-orange-500/20 px-3 py-1 ring-1 ring-red-400/30 text-white/90">
+                      <span className="font-semibold text-white">
+                        {combinationsGenerated.toLocaleString()}
+                      </span>{" "}
+                      combinations generated
+                    </span>
+                  )}
                   {drawsUpdatedAt && (
                     <span className="rounded-full bg-white/5 px-3 py-1 ring-1 ring-white/10 text-white/80">
                       Data updated{" "}
@@ -1089,7 +1123,7 @@ const PowerballGenerator = () => {
                 </p>
 
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     if (lockedError) return;
                     setEditing(null);
                     setEditValue("");
@@ -1103,6 +1137,22 @@ const PowerballGenerator = () => {
                         powerballLocked
                       )
                     );
+
+                    // Increment counter
+                    try {
+                      const res = await fetch("/api/powerball/counter/increment", {
+                        method: "POST",
+                        headers: { Accept: "application/json" },
+                      });
+                      if (res.ok) {
+                        const payload = await res.json();
+                        if (payload?.count != null) {
+                          setCombinationsGenerated(payload.count);
+                        }
+                      }
+                    } catch {
+                      // Silently fail - counter is not critical
+                    }
                   }}
                   className="mt-5 w-full rounded-xl bg-linear-to-r from-red-500 via-red-500 to-orange-400 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-red-500/20 ring-1 ring-white/10 transition hover:brightness-110 active:brightness-95 disabled:opacity-60"
                 >

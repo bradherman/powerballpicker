@@ -4,6 +4,7 @@ const DEFAULT_SOURCE_URL =
 const KV_DRAWS_KEY = "powerball:draws:v1";
 const KV_META_KEY = "powerball:meta:v1";
 const KV_JACKPOT_KEY = "powerball:jackpot:v1";
+const KV_COUNTER_KEY = "powerball:counter:v1";
 
 function jsonResponse(body, init = {}) {
   const headers = new Headers(init.headers);
@@ -430,6 +431,62 @@ export default {
           "Access-Control-Allow-Origin": "*",
         },
       });
+    }
+
+    if (
+      request.method === "POST" &&
+      url.pathname === "/api/powerball/counter/increment"
+    ) {
+      try {
+        const current = await env.POWERBALL_KV.get(KV_COUNTER_KEY, "json");
+        const currentCount = current?.count ?? 0;
+        const newCount = currentCount + 1;
+
+        await env.POWERBALL_KV.put(
+          KV_COUNTER_KEY,
+          JSON.stringify({
+            count: newCount,
+            updatedAt: new Date().toISOString(),
+          })
+        );
+
+        return jsonResponse(
+          { count: newCount, updatedAt: new Date().toISOString() },
+          {
+            headers: {
+              "Cache-Control": "no-cache",
+              "Access-Control-Allow-Origin": "*",
+            },
+          }
+        );
+      } catch (e) {
+        return jsonResponse(
+          { error: e?.message || "Failed to increment counter" },
+          { status: 500 }
+        );
+      }
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/powerball/counter") {
+      try {
+        const stored = await env.POWERBALL_KV.get(KV_COUNTER_KEY, "json");
+        const count = stored?.count ?? 0;
+
+        return jsonResponse(
+          { count, updatedAt: stored?.updatedAt ?? null },
+          {
+            headers: {
+              "Cache-Control": "public, max-age=60",
+              "Access-Control-Allow-Origin": "*",
+            },
+          }
+        );
+      } catch (e) {
+        return jsonResponse(
+          { error: e?.message || "Failed to get counter" },
+          { status: 500 }
+        );
+      }
     }
 
     return new Response("Not found", { status: 404 });
