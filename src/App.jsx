@@ -75,11 +75,6 @@ const PowerballGenerator = () => {
         if (cancelled) return;
         setDraws(nextDraws);
         setDrawsUpdatedAt(payload?.updatedAt ?? null);
-
-        // Set jackpot if available
-        if (payload?.jackpot?.amount) {
-          setJackpot(payload.jackpot);
-        }
       } catch {
         // fall back to embedded data
       }
@@ -92,15 +87,24 @@ const PowerballGenerator = () => {
 
   // Also fetch jackpot separately in case it wasn't in the draws response
   useEffect(() => {
-    if (jackpot) return; // Already have jackpot
+    const refreshJackpot =
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("refreshJackpot") === "1";
+
+    if (jackpot && !refreshJackpot) return; // Already have jackpot
 
     let cancelled = false;
 
     (async () => {
       try {
-        const res = await fetch("/api/powerball/jackpot", {
-          headers: { Accept: "application/json" },
-        });
+        const res = await fetch(
+          refreshJackpot
+            ? "/api/powerball/jackpot?refresh=1"
+            : "/api/powerball/jackpot",
+          {
+            headers: { Accept: "application/json" },
+          }
+        );
         if (!res.ok || cancelled) return;
 
         const payload = await res.json();

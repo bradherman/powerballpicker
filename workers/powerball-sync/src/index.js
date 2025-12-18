@@ -283,6 +283,7 @@ async function fetchJackpot(env) {
               jsonData.jackpot ||
               jsonData.jackpotAmount ||
               jsonData.currentJackpot;
+
             if (jackpotValue) {
               const amount = parseJackpotAmount(jackpotValue);
               if (Number.isFinite(amount) && amount > 0) {
