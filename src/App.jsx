@@ -182,28 +182,6 @@ const PowerballGenerator = () => {
     };
   }, []);
 
-  // Save initial picks once on mount
-  useEffect(() => {
-    if (!initialPicksSavedRef.current && picks.length > 0) {
-      initialPicksSavedRef.current = true;
-      // Small delay to ensure this runs after the counter increment
-      setTimeout(async () => {
-        try {
-          await fetch("/api/powerball/picks", {
-            method: "POST",
-            headers: {
-              Accept: "application/json",
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ picks }),
-          });
-        } catch {
-          // Silently fail
-        }
-      }, 200);
-    }
-  }, [picks]);
-
   // Fetch total winnings
   useEffect(() => {
     let cancelled = false;
@@ -293,7 +271,10 @@ const PowerballGenerator = () => {
       for (let n = 1; n <= 69; n++) {
         const recent = mainRecentFreq[n] || 0;
         const total = mainFreq[n] || 0;
-        weights.set(n, (recent / Math.max(maxRecent, 1)) * 10 + (total * 0.5) + 1);
+        weights.set(
+          n,
+          (recent / Math.max(maxRecent, 1)) * 10 + total * 0.5 + 1
+        );
       }
     } else if (strategy === "cold-recently") {
       // Favor numbers that appeared least frequently in the last 90 days
@@ -301,7 +282,10 @@ const PowerballGenerator = () => {
       for (let n = 1; n <= 69; n++) {
         const recent = mainRecentFreq[n] || 0;
         // Invert recent frequency: less recent = higher weight
-        weights.set(n, ((maxRecent - recent) / Math.max(maxRecent, 1)) * 10 + 1);
+        weights.set(
+          n,
+          ((maxRecent - recent) / Math.max(maxRecent, 1)) * 10 + 1
+        );
       }
     } else if (strategy === "cold") {
       // Favor numbers that haven't appeared in a while
@@ -319,7 +303,7 @@ const PowerballGenerator = () => {
         const rangePos = n / rangeSize;
         const freq = mainFreq[n] || 0;
         // Combine range position with frequency, but reduce frequency weight
-        weights.set(n, (1 + Math.abs(rangePos - 0.5)) * 2 + (freq * 0.3) + 1);
+        weights.set(n, (1 + Math.abs(rangePos - 0.5)) * 2 + freq * 0.3 + 1);
       }
     } else {
       // "balanced" - default historical frequency
@@ -346,7 +330,10 @@ const PowerballGenerator = () => {
       for (let n = 1; n <= 26; n++) {
         const recent = pbRecentFreq[n] || 0;
         const total = pbFreq[n] || 0;
-        weights.set(n, (recent / Math.max(maxRecent, 1)) * 10 + (total * 0.5) + 1);
+        weights.set(
+          n,
+          (recent / Math.max(maxRecent, 1)) * 10 + total * 0.5 + 1
+        );
       }
     } else if (strategy === "cold-recently") {
       // Favor numbers that appeared least frequently in the last 90 days
@@ -354,7 +341,10 @@ const PowerballGenerator = () => {
       for (let n = 1; n <= 26; n++) {
         const recent = pbRecentFreq[n] || 0;
         // Invert recent frequency: less recent = higher weight
-        weights.set(n, ((maxRecent - recent) / Math.max(maxRecent, 1)) * 10 + 1);
+        weights.set(
+          n,
+          ((maxRecent - recent) / Math.max(maxRecent, 1)) * 10 + 1
+        );
       }
     } else if (strategy === "cold") {
       const maxFreq = Math.max(...Object.values(pbFreq), 1);
@@ -367,7 +357,7 @@ const PowerballGenerator = () => {
       for (let n = 1; n <= 26; n++) {
         const rangePos = n / rangeSize;
         const freq = pbFreq[n] || 0;
-        weights.set(n, (1 + Math.abs(rangePos - 0.5)) * 2 + (freq * 0.3) + 1);
+        weights.set(n, (1 + Math.abs(rangePos - 0.5)) * 2 + freq * 0.3 + 1);
       }
     } else {
       // "balanced" - default
@@ -488,7 +478,31 @@ const PowerballGenerator = () => {
   const [copied, setCopied] = useState(null);
   const [justGenerated, setJustGenerated] = useState(false);
   const [animatingBalls, setAnimatingBalls] = useState(new Set());
-  const [displayPicks, setDisplayPicks] = useState(() => generatePicks(5, 70, [], []));
+  const [displayPicks, setDisplayPicks] = useState(() =>
+    generatePicks(5, 70, [], [])
+  );
+
+  // Save initial picks once on mount
+  useEffect(() => {
+    if (!initialPicksSavedRef.current && picks.length > 0) {
+      initialPicksSavedRef.current = true;
+      // Small delay to ensure this runs after the counter increment
+      setTimeout(async () => {
+        try {
+          await fetch("/api/powerball/picks", {
+            method: "POST",
+            headers: {
+              Accept: "application/json",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ picks }),
+          });
+        } catch {
+          // Silently fail
+        }
+      }, 200);
+    }
+  }, [picks]);
   const [showStats, setShowStats] = useState(true);
   const [showChecker, setShowChecker] = useState(false);
   const [showPrizeTable, setShowPrizeTable] = useState(false);
@@ -838,7 +852,12 @@ const PowerballGenerator = () => {
   };
 
   const calculatePickPrize = (pick) => {
-    if (!latestDraw || !pick || !Array.isArray(pick.main) || pick.main.length !== 5) {
+    if (
+      !latestDraw ||
+      !pick ||
+      !Array.isArray(pick.main) ||
+      pick.main.length !== 5
+    ) {
       return null;
     }
 
@@ -1400,8 +1419,15 @@ const PowerballGenerator = () => {
                     );
 
                     // Animate each ball in sequence
-                    const animateBall = (pickIdx, ballIdx, isPowerball, finalValue) => {
-                      const ballKey = `${pickIdx}-${ballIdx}-${isPowerball ? 'pb' : 'main'}`;
+                    const animateBall = (
+                      pickIdx,
+                      ballIdx,
+                      isPowerball,
+                      finalValue
+                    ) => {
+                      const ballKey = `${pickIdx}-${ballIdx}-${
+                        isPowerball ? "pb" : "main"
+                      }`;
                       setAnimatingBalls((prev) => new Set(prev).add(ballKey));
 
                       // Spin through numbers
@@ -1413,7 +1439,8 @@ const PowerballGenerator = () => {
                       const spinInterval = setInterval(() => {
                         currentStep++;
                         const range = isPowerball ? 26 : 69;
-                        const randomValue = Math.floor(Math.random() * range) + 1;
+                        const randomValue =
+                          Math.floor(Math.random() * range) + 1;
 
                         setDisplayPicks((prev) => {
                           const updated = prev.map((p, pIdx) => {
@@ -1480,14 +1507,17 @@ const PowerballGenerator = () => {
 
                     // Increment counter
                     try {
-                      const res = await fetch("/api/powerball/counter/increment", {
-                        method: "POST",
-                        headers: {
-                          Accept: "application/json",
-                          "Content-Type": "application/json",
-                        },
-                        body: JSON.stringify({ count: numLines }),
-                      });
+                      const res = await fetch(
+                        "/api/powerball/counter/increment",
+                        {
+                          method: "POST",
+                          headers: {
+                            Accept: "application/json",
+                            "Content-Type": "application/json",
+                          },
+                          body: JSON.stringify({ count: numLines }),
+                        }
+                      );
                       if (res.ok) {
                         const payload = await res.json();
                         if (payload?.count != null) {
@@ -1514,7 +1544,11 @@ const PowerballGenerator = () => {
                   }}
                   className="mt-5 w-full rounded-xl bg-linear-to-r from-red-500 via-red-500 to-orange-400 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-red-500/20 ring-1 ring-white/10 transition hover:brightness-110 active:brightness-95 disabled:opacity-60 relative overflow-hidden"
                 >
-                  <span className={`inline-flex items-center gap-2 transition-opacity duration-200 ${justGenerated ? 'opacity-0' : 'opacity-100'}`}>
+                  <span
+                    className={`inline-flex items-center gap-2 transition-opacity duration-200 ${
+                      justGenerated ? "opacity-0" : "opacity-100"
+                    }`}
+                  >
                     Generate New Picks
                   </span>
                   {justGenerated && (
@@ -1599,7 +1633,8 @@ const PowerballGenerator = () => {
                       className="mt-3 w-full accent-red-400"
                     />
                     <p className="mt-2 text-xs text-white/60">
-                      0% uses the selected strategy fully. 100% ignores strategy and is uniform random.
+                      0% uses the selected strategy fully. 100% ignores strategy
+                      and is uniform random.
                     </p>
                   </div>
 
@@ -1616,20 +1651,36 @@ const PowerballGenerator = () => {
                       onChange={(e) => setStrategy(e.target.value)}
                       className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-red-400/30"
                     >
-                      <option value="balanced">Balanced (Historical frequency)</option>
+                      <option value="balanced">
+                        Balanced (Historical frequency)
+                      </option>
                       <option value="hot">Hot Numbers (Most frequent)</option>
-                      <option value="recent-hot">Recent Hot (Most recent 36 draws)</option>
-                      <option value="cold-recently">Cold Recently (Least frequent in recent 36 draws)</option>
-                      <option value="cold">Cold Numbers (Least frequent)</option>
-                      <option value="even-spread">Even Spread (Avoid clustering)</option>
+                      <option value="recent-hot">
+                        Recent Hot (Most recent 36 draws)
+                      </option>
+                      <option value="cold-recently">
+                        Cold Recently (Least frequent in recent 36 draws)
+                      </option>
+                      <option value="cold">
+                        Cold Numbers (Least frequent)
+                      </option>
+                      <option value="even-spread">
+                        Even Spread (Avoid clustering)
+                      </option>
                     </select>
                     <p className="mt-2 text-xs text-white/60">
-                      {strategy === "balanced" && "Uses overall historical frequency"}
-                      {strategy === "hot" && "Favors numbers that appear most often"}
-                      {strategy === "recent-hot" && "Favors numbers from the most recent 36 draws"}
-                      {strategy === "cold-recently" && "Favors numbers that rarely appeared in the most recent 36 draws"}
-                      {strategy === "cold" && "Favors numbers that rarely appear"}
-                      {strategy === "even-spread" && "Favors numbers spread across the range"}
+                      {strategy === "balanced" &&
+                        "Uses overall historical frequency"}
+                      {strategy === "hot" &&
+                        "Favors numbers that appear most often"}
+                      {strategy === "recent-hot" &&
+                        "Favors numbers from the most recent 36 draws"}
+                      {strategy === "cold-recently" &&
+                        "Favors numbers that rarely appeared in the most recent 36 draws"}
+                      {strategy === "cold" &&
+                        "Favors numbers that rarely appear"}
+                      {strategy === "even-spread" &&
+                        "Favors numbers spread across the range"}
                     </p>
                   </div>
 
@@ -1819,74 +1870,156 @@ const PowerballGenerator = () => {
                   {displayPicks.map((pick, idx) => {
                     const finalPick = picks[idx];
                     return (
-                    <div
-                      key={idx}
-                      className="rounded-2xl border border-white/10 bg-white/5 p-4 transition hover:bg-white/7"
-                    >
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="flex items-center gap-2 text-sm font-semibold text-white/90">
-                          <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/10 ring-1 ring-white/10">
-                            {idx + 1}
-                          </span>
-                          <span>Pick</span>
-                          {(() => {
-                            const prize = calculatePickPrize(finalPick);
-                            if (!prize) return null;
-                            const basePrize = formatPrize(prize.base);
-                            const ppPrize = prize.withPowerPlay != null ? formatPrize(prize.withPowerPlay) : null;
-                            const tooltipId = `prize-tooltip-${idx}`;
-                            const tooltipText = ppPrize
-                              ? `Had this line been played on the last drawing, you would have won at least ${basePrize} (${ppPrize} with Power Play)`
-                              : `Had this line been played on the last drawing, you would have won at least ${basePrize}`;
-                            return (
-                              <>
-                                <span
-                                  data-tooltip-id={tooltipId}
-                                  className="inline-flex items-center justify-center text-emerald-400 cursor-help"
-                                >
-                                  $
-                                </span>
-                                <Tooltip
-                                  id={tooltipId}
-                                  place="top"
-                                  className="bg-slate-800! text-white! border! border-white/20! rounded-lg! px-3! py-2! text-sm! max-w-xs! z-50!"
-                                  style={{ backgroundColor: 'rgb(30 41 55)', color: 'white' }}
-                                >
-                                  {tooltipText}
-                                </Tooltip>
-                              </>
-                            );
-                          })()}
-                        </div>
+                      <div
+                        key={idx}
+                        className="rounded-2xl border border-white/10 bg-white/5 p-4 transition hover:bg-white/7"
+                      >
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex items-center gap-2 text-sm font-semibold text-white/90">
+                            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/10 ring-1 ring-white/10">
+                              {idx + 1}
+                            </span>
+                            <span>Pick</span>
+                            {(() => {
+                              const prize = calculatePickPrize(finalPick);
+                              if (!prize) return null;
+                              const basePrize = formatPrize(prize.base);
+                              const ppPrize =
+                                prize.withPowerPlay != null
+                                  ? formatPrize(prize.withPowerPlay)
+                                  : null;
+                              const tooltipId = `prize-tooltip-${idx}`;
+                              const tooltipText = ppPrize
+                                ? `Had this line been played on the last drawing, you would have won at least ${basePrize} (${ppPrize} with Power Play)`
+                                : `Had this line been played on the last drawing, you would have won at least ${basePrize}`;
+                              return (
+                                <>
+                                  <span
+                                    data-tooltip-id={tooltipId}
+                                    className="inline-flex items-center justify-center text-emerald-400 cursor-help"
+                                  >
+                                    $
+                                  </span>
+                                  <Tooltip
+                                    id={tooltipId}
+                                    place="top"
+                                    className="bg-slate-800! text-white! border! border-white/20! rounded-lg! px-3! py-2! text-sm! max-w-xs! z-50!"
+                                    style={{
+                                      backgroundColor: "rgb(30 41 55)",
+                                      color: "white",
+                                    }}
+                                  >
+                                    {tooltipText}
+                                  </Tooltip>
+                                </>
+                              );
+                            })()}
+                          </div>
 
-                        <div className="flex items-center gap-3 flex-wrap">
-                          <div className="flex gap-2">
-                            {pick.main.map((num, i) => {
-                              const ballKey = `${idx}-${i}-main`;
-                              const isAnimating = animatingBalls.has(ballKey);
-                              const displayNum = num ?? (finalPick?.main?.[i] ?? null);
-                              const isEditing =
+                          <div className="flex items-center gap-3 flex-wrap">
+                            <div className="flex gap-2">
+                              {pick.main.map((num, i) => {
+                                const ballKey = `${idx}-${i}-main`;
+                                const isAnimating = animatingBalls.has(ballKey);
+                                const displayNum =
+                                  num ?? finalPick?.main?.[i] ?? null;
+                                const isEditing =
+                                  editing?.lineIdx === idx &&
+                                  editing?.kind === "main" &&
+                                  editing?.index === i;
+
+                                if (isEditing) {
+                                  const editValue = finalPick?.main?.[i] ?? num;
+                                  return (
+                                    <div
+                                      key={i}
+                                      className={[
+                                        "h-12 w-12 rounded-full bg-white flex items-center justify-center shadow-sm",
+                                        editValue &&
+                                        mainLocked.includes(editValue)
+                                          ? "ring-4 ring-inset ring-amber-400/80"
+                                          : "ring-2 ring-red-400/40",
+                                      ].join(" ")}
+                                    >
+                                      <input
+                                        autoFocus
+                                        type="number"
+                                        min={1}
+                                        max={69}
+                                        inputMode="numeric"
+                                        value={editValue}
+                                        onChange={(e) =>
+                                          setEditValue(e.target.value)
+                                        }
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter") commitEdit();
+                                          if (e.key === "Escape") cancelEdit();
+                                        }}
+                                        onBlur={cancelEdit}
+                                        className="w-10 bg-transparent text-center text-sm font-extrabold text-slate-900 focus:outline-none"
+                                      />
+                                    </div>
+                                  );
+                                }
+
+                                const finalValue = finalPick?.main?.[i];
+                                const isLocked =
+                                  finalValue && mainLocked.includes(finalValue);
+
+                                return (
+                                  <button
+                                    key={i}
+                                    type="button"
+                                    title="Click to edit"
+                                    onClick={() => beginEdit(idx, "main", i)}
+                                    disabled={
+                                      isAnimating || displayNum === null
+                                    }
+                                    className={[
+                                      "h-12 w-12 rounded-full font-extrabold shadow-sm transition",
+                                      displayNum === null
+                                        ? "bg-white/20 text-white/40 cursor-not-allowed"
+                                        : isAnimating
+                                        ? "bg-white text-slate-900 ring-2 ring-red-400/60 animate-pulse"
+                                        : "bg-white text-slate-900 hover:brightness-105",
+                                      isLocked
+                                        ? "ring-4 ring-inset ring-amber-400/80"
+                                        : displayNum !== null &&
+                                          "ring-1 ring-white/25",
+                                    ].join(" ")}
+                                  >
+                                    {displayNum
+                                      ? displayNum.toString().padStart(2, "0")
+                                      : "—"}
+                                  </button>
+                                );
+                              })}
+                            </div>
+
+                            <span className="text-white/50 font-semibold">
+                              +
+                            </span>
+
+                            {(() => {
+                              const isEditingPb =
                                 editing?.lineIdx === idx &&
-                                editing?.kind === "main" &&
-                                editing?.index === i;
-
-                              if (isEditing) {
-                                const editValue = finalPick?.main?.[i] ?? num;
+                                editing?.kind === "pb";
+                              if (isEditingPb) {
                                 return (
                                   <div
-                                    key={i}
                                     className={[
-                                      "h-12 w-12 rounded-full bg-white flex items-center justify-center shadow-sm",
-                                      editValue && mainLocked.includes(editValue)
-                                        ? "ring-4 ring-inset ring-amber-400/80"
-                                        : "ring-2 ring-red-400/40",
+                                      "h-12 w-12 rounded-full bg-linear-to-b from-red-500 to-red-700 flex items-center justify-center shadow-lg shadow-red-500/15",
+                                      powerballLocked.length > 0 &&
+                                      powerballLocked.includes(pick.powerball)
+                                        ? "ring-4 ring-inset ring-amber-200/90"
+                                        : "ring-2 ring-red-300/40",
                                     ].join(" ")}
                                   >
                                     <input
                                       autoFocus
                                       type="number"
                                       min={1}
-                                      max={69}
+                                      max={26}
                                       inputMode="numeric"
                                       value={editValue}
                                       onChange={(e) =>
@@ -1897,125 +2030,67 @@ const PowerballGenerator = () => {
                                         if (e.key === "Escape") cancelEdit();
                                       }}
                                       onBlur={cancelEdit}
-                                      className="w-10 bg-transparent text-center text-sm font-extrabold text-slate-900 focus:outline-none"
+                                      className="w-10 bg-transparent text-center text-sm font-bold text-white focus:outline-none"
                                     />
                                   </div>
                                 );
                               }
 
-                              const finalValue = finalPick?.main?.[i];
-                              const isLocked = finalValue && mainLocked.includes(finalValue);
+                              const pbBallKey = `${idx}-0-pb`;
+                              const isPbAnimating =
+                                animatingBalls.has(pbBallKey);
+                              const displayPb =
+                                pick.powerball ?? finalPick?.powerball ?? null;
+                              const finalPbValue = finalPick?.powerball;
+                              const isPbLocked =
+                                finalPbValue &&
+                                powerballLocked.length > 0 &&
+                                powerballLocked.includes(finalPbValue);
 
                               return (
                                 <button
-                                  key={i}
                                   type="button"
                                   title="Click to edit"
-                                  onClick={() => beginEdit(idx, "main", i)}
-                                  disabled={isAnimating || displayNum === null}
+                                  onClick={() => beginEdit(idx, "pb", null)}
+                                  disabled={isPbAnimating || displayPb === null}
                                   className={[
-                                    "h-12 w-12 rounded-full font-extrabold shadow-sm transition",
-                                    displayNum === null
-                                      ? "bg-white/20 text-white/40 cursor-not-allowed"
-                                      : isAnimating
-                                      ? "bg-white text-slate-900 ring-2 ring-red-400/60 animate-pulse"
-                                      : "bg-white text-slate-900 hover:brightness-105",
-                                    isLocked
-                                      ? "ring-4 ring-inset ring-amber-400/80"
-                                      : displayNum !== null && "ring-1 ring-white/25",
+                                    "h-12 w-12 rounded-full font-extrabold shadow-lg transition",
+                                    displayPb === null
+                                      ? "bg-red-500/20 text-white/40 cursor-not-allowed ring-1 ring-red-300/20"
+                                      : isPbAnimating
+                                      ? "bg-linear-to-b from-red-500 to-red-700 text-white ring-2 ring-red-400/60 animate-pulse"
+                                      : "bg-linear-to-b from-red-500 to-red-700 text-white hover:brightness-110",
+                                    isPbLocked
+                                      ? "ring-4 ring-inset ring-amber-200/90"
+                                      : displayPb !== null &&
+                                        "ring-1 ring-red-300/30",
                                   ].join(" ")}
                                 >
-                                  {displayNum ? displayNum.toString().padStart(2, "0") : "—"}
+                                  {displayPb
+                                    ? displayPb.toString().padStart(2, "0")
+                                    : "—"}
                                 </button>
                               );
-                            })}
+                            })()}
+
+                            <button
+                              type="button"
+                              onClick={() => handleCopyLine(idx)}
+                              className="inline-flex items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/90 transition hover:bg-white/10"
+                              title="Copy this line"
+                            >
+                              Copy
+                              {copied === `line:${idx}` ? " ✓" : ""}
+                            </button>
                           </div>
-
-                          <span className="text-white/50 font-semibold">+</span>
-
-                          {(() => {
-                            const isEditingPb =
-                              editing?.lineIdx === idx &&
-                              editing?.kind === "pb";
-                            if (isEditingPb) {
-                              return (
-                                <div
-                                  className={[
-                                    "h-12 w-12 rounded-full bg-linear-to-b from-red-500 to-red-700 flex items-center justify-center shadow-lg shadow-red-500/15",
-                                    powerballLocked.length > 0 &&
-                                    powerballLocked.includes(pick.powerball)
-                                      ? "ring-4 ring-inset ring-amber-200/90"
-                                      : "ring-2 ring-red-300/40",
-                                  ].join(" ")}
-                                >
-                                  <input
-                                    autoFocus
-                                    type="number"
-                                    min={1}
-                                    max={26}
-                                    inputMode="numeric"
-                                    value={editValue}
-                                    onChange={(e) =>
-                                      setEditValue(e.target.value)
-                                    }
-                                    onKeyDown={(e) => {
-                                      if (e.key === "Enter") commitEdit();
-                                      if (e.key === "Escape") cancelEdit();
-                                    }}
-                                    onBlur={cancelEdit}
-                                    className="w-10 bg-transparent text-center text-sm font-bold text-white focus:outline-none"
-                                  />
-                                </div>
-                              );
-                            }
-
-                            const pbBallKey = `${idx}-0-pb`;
-                            const isPbAnimating = animatingBalls.has(pbBallKey);
-                            const displayPb = pick.powerball ?? (finalPick?.powerball ?? null);
-                            const finalPbValue = finalPick?.powerball;
-                            const isPbLocked = finalPbValue && powerballLocked.length > 0 && powerballLocked.includes(finalPbValue);
-
-                            return (
-                              <button
-                                type="button"
-                                title="Click to edit"
-                                onClick={() => beginEdit(idx, "pb", null)}
-                                disabled={isPbAnimating || displayPb === null}
-                                className={[
-                                  "h-12 w-12 rounded-full font-extrabold shadow-lg transition",
-                                  displayPb === null
-                                    ? "bg-red-500/20 text-white/40 cursor-not-allowed ring-1 ring-red-300/20"
-                                    : isPbAnimating
-                                    ? "bg-linear-to-b from-red-500 to-red-700 text-white ring-2 ring-red-400/60 animate-pulse"
-                                    : "bg-linear-to-b from-red-500 to-red-700 text-white hover:brightness-110",
-                                  isPbLocked
-                                    ? "ring-4 ring-inset ring-amber-200/90"
-                                    : displayPb !== null && "ring-1 ring-red-300/30",
-                                ].join(" ")}
-                              >
-                                {displayPb ? displayPb.toString().padStart(2, "0") : "—"}
-                              </button>
-                            );
-                          })()}
-
-                          <button
-                            type="button"
-                            onClick={() => handleCopyLine(idx)}
-                            className="inline-flex items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/90 transition hover:bg-white/10"
-                            title="Copy this line"
-                          >
-                            Copy
-                            {copied === `line:${idx}` ? " ✓" : ""}
-                          </button>
                         </div>
+
+                        {editing?.lineIdx === idx && editError ? (
+                          <div className="mt-2 text-sm text-red-200">
+                            {editError}
+                          </div>
+                        ) : null}
                       </div>
-
-                      {editing?.lineIdx === idx && editError ? (
-                        <div className="mt-2 text-sm text-red-200">
-                          {editError}
-                        </div>
-                      ) : null}
-                    </div>
                     );
                   })}
                 </div>
@@ -2097,13 +2172,17 @@ const PowerballGenerator = () => {
               className="w-full text-left font-semibold text-lg text-white flex justify-between items-center"
             >
               <span>💰 Prize Table</span>
-              <span className="text-white/70">{showPrizeTable ? "▼" : "▶"}</span>
+              <span className="text-white/70">
+                {showPrizeTable ? "▼" : "▶"}
+              </span>
             </button>
 
             {showPrizeTable && (
               <div className="mt-4 space-y-4">
                 <div className="text-sm text-white/70">
-                  Prize amounts based on matching white balls and Powerball. Power Play multipliers apply to all prizes except the jackpot. Match 5 (no Powerball) is always $2M with Power Play.
+                  Prize amounts based on matching white balls and Powerball.
+                  Power Play multipliers apply to all prizes except the jackpot.
+                  Match 5 (no Powerball) is always $2M with Power Play.
                 </div>
 
                 <div className="overflow-x-auto">
@@ -2177,7 +2256,10 @@ const PowerballGenerator = () => {
                               {formatOdds(odds)}
                             </td>
                             <td className="px-4 py-3 text-center text-sm text-white/90">
-                              {white === 5 && pb === 1 && basePrize.base === "JACKPOT" && jackpot?.amount
+                              {white === 5 &&
+                              pb === 1 &&
+                              basePrize.base === "JACKPOT" &&
+                              jackpot?.amount
                                 ? formatJackpot(jackpot.amount)
                                 : formatPrize(basePrize.base)}
                             </td>
@@ -2186,7 +2268,10 @@ const PowerballGenerator = () => {
                                 key={multipliers[idx]}
                                 className="px-4 py-3 text-center text-sm text-white/90"
                               >
-                                {white === 5 && pb === 1 && ppPrize.withPowerPlay === "JACKPOT" && jackpot?.amount
+                                {white === 5 &&
+                                pb === 1 &&
+                                ppPrize.withPowerPlay === "JACKPOT" &&
+                                jackpot?.amount
                                   ? formatJackpot(jackpot.amount)
                                   : ppPrize.withPowerPlay != null
                                   ? formatPrize(ppPrize.withPowerPlay)
@@ -2202,7 +2287,10 @@ const PowerballGenerator = () => {
 
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                   <p className="text-sm text-white/70">
-                    <strong className="text-white">Note:</strong> Prize amounts are approximate and may vary. The jackpot is not multiplied by Power Play. Match 5 (no Powerball) with Power Play is always $2 million regardless of the multiplier drawn. Visit{" "}
+                    <strong className="text-white">Note:</strong> Prize amounts
+                    are approximate and may vary. The jackpot is not multiplied
+                    by Power Play. Match 5 (no Powerball) with Power Play is
+                    always $2 million regardless of the multiplier drawn. Visit{" "}
                     <a
                       href="https://www.powerball.com/powerball-prize-chart"
                       target="_blank"
@@ -2518,7 +2606,8 @@ const PowerballGenerator = () => {
                     </div>
                     {totalWinnings.totalWinners > 0 && (
                       <div className="mt-3 text-xs text-white/70">
-                        {totalWinnings.totalWinners.toLocaleString()} winning pick
+                        {totalWinnings.totalWinners.toLocaleString()} winning
+                        pick
                         {totalWinnings.totalWinners !== 1 ? "s" : ""} out of{" "}
                         {totalWinnings.totalChecked.toLocaleString()} checked
                       </div>
