@@ -758,6 +758,35 @@ const PowerballGenerator = () => {
 
   const POWERBALL_JACKPOT_ODDS_ONE_IN = 292201338; // per powerball.com prize chart
 
+  const getOdds = (whiteMatches, pbMatch) => {
+    // Official Powerball odds from powerball.com
+    const oddsTable = {
+      "5-1": 292201338, // Jackpot
+      "5-0": 11688053.52,
+      "4-1": 913129.18,
+      "4-0": 36525.17,
+      "3-1": 14494.11,
+      "3-0": 579.76,
+      "2-1": 701.33,
+      "1-1": 91.98,
+      "0-1": 38.32,
+    };
+
+    const key = `${whiteMatches}-${pbMatch ? 1 : 0}`;
+    return oddsTable[key] ?? null;
+  };
+
+  const formatOdds = (odds) => {
+    if (!odds) return "—";
+    if (odds >= 1000000) {
+      return `1 in ${(odds / 1000000).toFixed(2)}M`;
+    } else if (odds >= 1000) {
+      return `1 in ${(odds / 1000).toFixed(2)}K`;
+    } else {
+      return `1 in ${odds.toFixed(2)}`;
+    }
+  };
+
   const absurdButMoreLikelyFacts = useMemo(
     () => [
       {
@@ -1695,10 +1724,10 @@ const PowerballGenerator = () => {
                     <thead>
                       <tr className="border-b border-white/10">
                         <th className="px-4 py-3 text-left text-sm font-semibold text-white/90">
-                          White Balls
+                          Match
                         </th>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-white/90">
-                          Powerball
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-white/90">
+                          Odds
                         </th>
                         <th className="px-4 py-3 text-center text-sm font-semibold text-white/90">
                           Base Prize
@@ -1737,17 +1766,28 @@ const PowerballGenerator = () => {
                         const powerPlayPrizes = multipliers.map((mult) =>
                           computePrize(white, pb === 1, mult)
                         );
+                        const odds = getOdds(white, pb === 1);
 
                         return (
                           <tr
                             key={`${white}-${pb}`}
                             className="border-b border-white/5 hover:bg-white/5"
                           >
-                            <td className="px-4 py-3 text-sm font-semibold text-white">
-                              {white}
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {Array.from({ length: white }, (_, i) => (
+                                  <div
+                                    key={`white-${i}`}
+                                    className="h-8 w-8 rounded-full bg-white text-slate-900 font-extrabold text-[10px] flex items-center justify-center ring-1 ring-white/20 shadow-sm"
+                                  />
+                                ))}
+                                {pb === 1 && (
+                                  <div className="h-8 w-8 rounded-full bg-linear-to-b from-red-500 to-red-700 text-white font-extrabold text-[10px] flex items-center justify-center ring-1 ring-red-300/30 shadow-sm" />
+                                )}
+                              </div>
                             </td>
-                            <td className="px-4 py-3 text-sm font-semibold text-white">
-                              {pb}
+                            <td className="px-4 py-3 text-center text-sm text-white/70 font-mono">
+                              {formatOdds(odds)}
                             </td>
                             <td className="px-4 py-3 text-center text-sm text-white/90">
                               {formatPrize(basePrize.base)}
