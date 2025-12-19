@@ -323,6 +323,7 @@ const PowerballGenerator = () => {
   const [editError, setEditError] = useState(null);
   const [copied, setCopied] = useState(null);
   const [justGenerated, setJustGenerated] = useState(false);
+  const [picksGeneratedAt, setPicksGeneratedAt] = useState(null);
   const [showStats, setShowStats] = useState(true);
   const [showChecker, setShowChecker] = useState(false);
   const [showPrizeTable, setShowPrizeTable] = useState(false);
@@ -1189,6 +1190,9 @@ const PowerballGenerator = () => {
                     setJustGenerated(true);
                     setTimeout(() => setJustGenerated(false), 2500);
 
+                    // Set timestamp for highlight animation
+                    setPicksGeneratedAt(Date.now());
+
                     // Increment counter
                     try {
                       const res = await fetch("/api/powerball/counter/increment", {
@@ -1484,10 +1488,14 @@ const PowerballGenerator = () => {
                 </div>
 
                 <div className="mt-5 space-y-4">
-                  {picks.map((pick, idx) => (
+                  {picks.map((pick, idx) => {
+                    const isNewlyGenerated = picksGeneratedAt && (Date.now() - picksGeneratedAt) < 75;
+                    return (
                     <div
                       key={idx}
-                      className="rounded-2xl border border-white/10 bg-white/5 p-4 transition hover:bg-white/7"
+                      className={`rounded-2xl border border-white/10 bg-white/5 p-4 transition hover:bg-white/7 ${
+                        isNewlyGenerated ? 'animate-[highlightGlow_1s_ease-out]' : ''
+                      }`}
                     >
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex items-center gap-2 text-sm font-semibold text-white/90">
@@ -1630,7 +1638,8 @@ const PowerballGenerator = () => {
                         </div>
                       ) : null}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </section>
