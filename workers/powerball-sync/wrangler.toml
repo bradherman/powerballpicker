@@ -13,6 +13,12 @@ crons = ["59 7 * * *"]
 binding = "POWERBALL_KV"
 id = "f7ecf32c69964911837b64de927b3b32"
 
+# Bind D1 database for storing picks
+[[d1_databases]]
+binding = "powerball_picks"
+database_name = "powerball-picks"
+database_id = "cb58d1ab-378e-43de-bd34-5dbc629538f2"
+
 # Optional override for the upstream JSON source.
 [vars]
 POWERBALL_SOURCE_URL = "https://data.ny.gov/api/views/d6yy-54nr/rows.json?accessType=DOWNLOAD"

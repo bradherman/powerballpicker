@@ -196,6 +196,7 @@ async function syncLatestDraws(env) {
 
   const existingMeta = (await env.POWERBALL_KV.get(KV_META_KEY, "json")) ?? {};
   const etag = existingMeta?.etag ?? null;
+  const lastDrawDate = existingMeta?.lastDrawDate ?? null;
 
   const res = await fetch(sourceUrl, {
     headers: etag ? { "If-None-Match": etag } : {},
@@ -223,6 +224,27 @@ async function syncLatestDraws(env) {
   const newEtag = res.headers.get("ETag");
   const now = new Date().toISOString();
 
+  // Find the latest draw
+  const latestDraw = draws.length > 0 ? draws[0] : null;
+  const latestDrawDate = latestDraw?.drawDate
+    ? new Date(latestDraw.drawDate).toISOString().split("T")[0]
+    : null;
+
+  // Check for winning picks if we have a new draw
+  let winningsResult = null;
+  if (
+    latestDraw &&
+    latestDrawDate &&
+    latestDrawDate !== lastDrawDate &&
+    env.powerball_picks
+  ) {
+    try {
+      winningsResult = await checkWinningPicks(env, latestDraw);
+    } catch (e) {
+      console.error("Failed to check winning picks:", e);
+    }
+  }
+
   await env.POWERBALL_KV.put(
     KV_DRAWS_KEY,
     JSON.stringify({ draws, updatedAt: now })
@@ -235,10 +257,237 @@ async function syncLatestDraws(env) {
       lastCheckedAt: now,
       sourceUrl,
       drawCount: draws.length,
+      lastDrawDate: latestDrawDate,
     })
   );
 
-  return { updated: true, drawCount: draws.length };
+  return {
+    updated: true,
+    drawCount: draws.length,
+    winningsChecked: winningsResult !== null,
+    winnings: winningsResult,
+  };
+}
+
+function computePrize(whiteMatches, pbMatch, powerPlayMultiplier) {
+  // Hard-coded from https://www.powerball.com/powerball-prize-chart
+  // Power Play does not multiply the Jackpot. Match-5 (no PB) is always $2M with PP (regardless of multiplier).
+  const baseTable = {
+    "5-1": "JACKPOT",
+    "5-0": 1000000,
+    "4-1": 50000,
+    "4-0": 100,
+    "3-1": 100,
+    "3-0": 7,
+    "2-1": 7,
+    "1-1": 4,
+    "0-1": 4,
+  };
+
+  const key = `${whiteMatches}-${pbMatch ? 1 : 0}`;
+  const base = baseTable[key] ?? 0;
+
+  if (powerPlayMultiplier == null) {
+    return { base, withPowerPlay: null };
+  }
+
+  const m = Number(powerPlayMultiplier);
+  const validM = Number.isFinite(m) && m >= 2 ? m : null;
+  if (!validM) return { base, withPowerPlay: null };
+
+  if (base === "JACKPOT") return { base, withPowerPlay: "JACKPOT" };
+  if (base === 0) return { base: 0, withPowerPlay: 0 };
+  if (key === "5-0") return { base, withPowerPlay: 2000000 };
+  return { base, withPowerPlay: base * validM };
+}
+
+async function savePicks(env, picks) {
+  if (!Array.isArray(picks) || picks.length === 0) {
+    return { saved: 0 };
+  }
+
+  const now = new Date().toISOString();
+  let saved = 0;
+
+  for (const pick of picks) {
+    if (
+      !pick ||
+      !Array.isArray(pick.main) ||
+      pick.main.length !== 5 ||
+      typeof pick.powerball !== "number"
+    ) {
+      continue;
+    }
+
+    try {
+      await env.powerball_picks
+        .prepare(
+          `INSERT INTO picks (main_numbers, powerball, generated_at) VALUES (?, ?, ?)`
+        )
+        .bind(JSON.stringify(pick.main), pick.powerball, now)
+        .run();
+      saved++;
+    } catch (e) {
+      console.error("Failed to save pick:", e);
+    }
+  }
+
+  return { saved };
+}
+
+async function checkWinningPicks(env, draw) {
+  if (
+    !draw ||
+    !Array.isArray(draw.main) ||
+    draw.main.length !== 5 ||
+    typeof draw.powerball !== "number"
+  ) {
+    return { checked: 0, winners: 0, totalWinnings: 0, maxSingleWin: 0 };
+  }
+
+  const winningSet = new Set(draw.main);
+  const drawDate = draw.drawDate
+    ? new Date(draw.drawDate).toISOString().split("T")[0]
+    : null;
+  const powerPlayMultiplier = draw.multiplier || null;
+
+  // Get all unchecked picks
+  const uncheckedPicks = await env.powerball_picks
+    .prepare(
+      `SELECT id, main_numbers, powerball FROM picks WHERE checked = 0 ORDER BY generated_at ASC`
+    )
+    .all();
+
+  let checked = 0;
+  let winners = 0;
+  let totalWinnings = 0; // in cents
+  let maxSingleWin = 0; // in cents
+
+  for (const row of uncheckedPicks.results || []) {
+    const pick = {
+      id: row.id,
+      main: JSON.parse(row.main_numbers),
+      powerball: row.powerball,
+    };
+
+    if (!Array.isArray(pick.main) || pick.main.length !== 5) {
+      continue;
+    }
+
+    const whiteMatches = pick.main.reduce(
+      (acc, n) => acc + (winningSet.has(n) ? 1 : 0),
+      0
+    );
+    const pbMatch = pick.powerball === draw.powerball;
+    const prize = computePrize(whiteMatches, pbMatch, powerPlayMultiplier);
+
+    const basePrize = prize.base === "JACKPOT" ? 0 : Number(prize.base) || 0;
+    const ppPrize =
+      prize.withPowerPlay === "JACKPOT" ? 0 : Number(prize.withPowerPlay) || 0;
+    const maxPrize = Math.max(basePrize, ppPrize);
+
+    // Convert to cents
+    const basePrizeCents = basePrize * 100;
+    const ppPrizeCents = ppPrize * 100;
+    const maxPrizeCents = maxPrize * 100;
+
+    // Update the pick record
+    await env.powerball_picks
+      .prepare(
+        `UPDATE picks SET
+        checked = 1,
+        draw_date = ?,
+        white_matches = ?,
+        powerball_match = ?,
+        prize_base = ?,
+        prize_with_pp = ?,
+        power_play_multiplier = ?
+      WHERE id = ?`
+      )
+      .bind(
+        drawDate,
+        whiteMatches,
+        pbMatch ? 1 : 0,
+        basePrizeCents,
+        ppPrizeCents,
+        powerPlayMultiplier,
+        pick.id
+      )
+      .run();
+
+    checked++;
+
+    if (maxPrizeCents > 0) {
+      winners++;
+      totalWinnings += maxPrizeCents;
+      if (maxPrizeCents > maxSingleWin) {
+        maxSingleWin = maxPrizeCents;
+      }
+    }
+  }
+
+  // Update or insert winnings summary
+  if (checked > 0 && drawDate) {
+    await env.powerball_picks
+      .prepare(
+        `INSERT INTO winnings_summary (draw_date, total_picks_checked, winning_picks, total_winnings_cents, max_single_win_cents, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(draw_date) DO UPDATE SET
+         total_picks_checked = ?,
+         winning_picks = ?,
+         total_winnings_cents = ?,
+         max_single_win_cents = ?,
+         updated_at = ?`
+      )
+      .bind(
+        drawDate,
+        checked,
+        winners,
+        totalWinnings,
+        maxSingleWin,
+        new Date().toISOString(),
+        checked,
+        winners,
+        totalWinnings,
+        maxSingleWin,
+        new Date().toISOString()
+      )
+      .run();
+  }
+
+  return { checked, winners, totalWinnings, maxSingleWin };
+}
+
+async function getTotalWinnings(env) {
+  try {
+    const result = await env.powerball_picks
+      .prepare(
+        `SELECT
+        SUM(total_winnings_cents) as total_cents,
+        MAX(max_single_win_cents) as max_single_cents,
+        SUM(winning_picks) as total_winners,
+        SUM(total_picks_checked) as total_checked
+      FROM winnings_summary`
+      )
+      .first();
+
+    return {
+      totalWinnings: result?.total_cents ? Number(result.total_cents) : 0,
+      maxSingleWin: result?.max_single_cents
+        ? Number(result.max_single_cents)
+        : 0,
+      totalWinners: result?.total_winners ? Number(result.total_winners) : 0,
+      totalChecked: result?.total_checked ? Number(result.total_checked) : 0,
+    };
+  } catch (e) {
+    console.error("Failed to get total winnings:", e);
+    return {
+      totalWinnings: 0,
+      maxSingleWin: 0,
+      totalWinners: 0,
+      totalChecked: 0,
+    };
+  }
 }
 
 async function fetchJackpot(env) {
@@ -487,6 +736,75 @@ export default {
       } catch (e) {
         return jsonResponse(
           { error: e?.message || "Failed to get counter" },
+          { status: 500 }
+        );
+      }
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/powerball/picks") {
+      try {
+        const body = await request.json().catch(() => ({}));
+        const picks = Array.isArray(body.picks) ? body.picks : [];
+
+        if (!env.powerball_picks) {
+          return jsonResponse(
+            { error: "Database not available" },
+            { status: 503 }
+          );
+        }
+
+        const result = await savePicks(env, picks);
+
+        return jsonResponse(
+          { saved: result.saved },
+          {
+            headers: {
+              "Cache-Control": "no-cache",
+              "Access-Control-Allow-Origin": "*",
+            },
+          }
+        );
+      } catch (e) {
+        return jsonResponse(
+          { error: e?.message || "Failed to save picks" },
+          { status: 500 }
+        );
+      }
+    }
+
+    if (
+      request.method === "GET" &&
+      url.pathname === "/api/powerball/winnings"
+    ) {
+      try {
+        if (!env.powerball_picks) {
+          return jsonResponse(
+            {
+              totalWinnings: 0,
+              maxSingleWin: 0,
+              totalWinners: 0,
+              totalChecked: 0,
+            },
+            {
+              headers: {
+                "Cache-Control": "public, max-age=300",
+                "Access-Control-Allow-Origin": "*",
+              },
+            }
+          );
+        }
+
+        const winnings = await getTotalWinnings(env);
+
+        return jsonResponse(winnings, {
+          headers: {
+            "Cache-Control": "public, max-age=300",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      } catch (e) {
+        return jsonResponse(
+          { error: e?.message || "Failed to get winnings" },
           { status: 500 }
         );
       }

@@ -61,6 +61,7 @@ const PowerballGenerator = () => {
   const [jackpot, setJackpot] = useState(null);
   const [combinationsGenerated, setCombinationsGenerated] = useState(0);
   const [strategy, setStrategy] = useState("balanced");
+  const [totalWinnings, setTotalWinnings] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -170,6 +171,56 @@ const PowerballGenerator = () => {
         } catch {
           // Silently fail - counter is not critical
         }
+
+        // Save initial picks - they're already in state from initialization
+        // We'll save them in a separate effect that watches picks
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Save initial picks once on mount
+  useEffect(() => {
+    if (!initialPicksSavedRef.current && picks.length > 0) {
+      initialPicksSavedRef.current = true;
+      // Small delay to ensure this runs after the counter increment
+      setTimeout(async () => {
+        try {
+          await fetch("/api/powerball/picks", {
+            method: "POST",
+            headers: {
+              Accept: "application/json",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ picks }),
+          });
+        } catch {
+          // Silently fail
+        }
+      }, 200);
+    }
+  }, [picks]);
+
+  // Fetch total winnings
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch("/api/powerball/winnings", {
+          headers: { Accept: "application/json" },
+        });
+        if (!res.ok || cancelled) return;
+
+        const payload = await res.json();
+        if (payload && !cancelled) {
+          setTotalWinnings(payload);
+        }
+      } catch {
+        // Silently fail
       }
     })();
 
@@ -443,6 +494,7 @@ const PowerballGenerator = () => {
   const [showPrizeTable, setShowPrizeTable] = useState(false);
   const checkerRef = useRef(null);
   const initialPicksCountedRef = useRef(false);
+  const initialPicksSavedRef = useRef(false);
   const [checkerInput, setCheckerInput] = useState("");
   const [checkerResults, setCheckerResults] = useState([]);
 
@@ -1445,6 +1497,20 @@ const PowerballGenerator = () => {
                     } catch {
                       // Silently fail - counter is not critical
                     }
+
+                    // Save picks to database
+                    try {
+                      await fetch("/api/powerball/picks", {
+                        method: "POST",
+                        headers: {
+                          Accept: "application/json",
+                          "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({ picks: newPicks }),
+                      });
+                    } catch {
+                      // Silently fail - saving picks is not critical
+                    }
                   }}
                   className="mt-5 w-full rounded-xl bg-linear-to-r from-red-500 via-red-500 to-orange-400 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-red-500/20 ring-1 ring-white/10 transition hover:brightness-110 active:brightness-95 disabled:opacity-60 relative overflow-hidden"
                 >
@@ -2430,6 +2496,33 @@ const PowerballGenerator = () => {
                     <div className="mt-1 text-sm font-semibold text-white/80">
                       lotto picks generated
                     </div>
+                  </div>
+                </div>
+              )}
+
+              {totalWinnings && totalWinnings.totalWinnings > 0 && (
+                <div className="mt-6 border-t border-white/10 pt-6">
+                  <div className="mx-auto max-w-2xl rounded-2xl border border-emerald-400/30 bg-gradient-to-br from-emerald-500/20 to-green-500/20 px-6 py-5 text-center backdrop-blur ring-1 ring-emerald-400/20">
+                    <div className="text-[11px] font-semibold tracking-wide text-emerald-200/80 uppercase">
+                      Potential Winnings
+                    </div>
+                    <div className="mt-2 font-mono text-4xl font-extrabold text-white">
+                      {formatJackpot(totalWinnings.totalWinnings / 100)}
+                    </div>
+                    <div className="mt-2 text-sm font-semibold text-white/90">
+                      Powerball Picker Picks could have won up to{" "}
+                      <span className="text-emerald-200">
+                        {formatJackpot(totalWinnings.totalWinnings / 100)}
+                      </span>{" "}
+                      if users actually played them!
+                    </div>
+                    {totalWinnings.totalWinners > 0 && (
+                      <div className="mt-3 text-xs text-white/70">
+                        {totalWinnings.totalWinners.toLocaleString()} winning pick
+                        {totalWinnings.totalWinners !== 1 ? "s" : ""} out of{" "}
+                        {totalWinnings.totalChecked.toLocaleString()} checked
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
