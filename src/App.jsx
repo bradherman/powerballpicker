@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Tooltip } from "react-tooltip";
+import "react-tooltip/dist/react-tooltip.css";
 
 const PowerballGenerator = () => {
   const rawData = useMemo(
@@ -1626,16 +1628,27 @@ const PowerballGenerator = () => {
                             if (!prize) return null;
                             const basePrize = formatPrize(prize.base);
                             const ppPrize = prize.withPowerPlay != null ? formatPrize(prize.withPowerPlay) : null;
+                            const tooltipId = `prize-tooltip-${idx}`;
                             const tooltipText = ppPrize
-                              ? `Would have won: ${basePrize} (${ppPrize} with Power Play)`
-                              : `Would have won: ${basePrize}`;
+                              ? `Had this line been played on the last drawing, you would have won at least ${basePrize} (${ppPrize} with Power Play)`
+                              : `Had this line been played on the last drawing, you would have won at least ${basePrize}`;
                             return (
-                              <span
-                                className="inline-flex items-center justify-center text-emerald-400 cursor-help"
-                                title={tooltipText}
-                              >
-                                $
-                              </span>
+                              <>
+                                <span
+                                  data-tooltip-id={tooltipId}
+                                  className="inline-flex items-center justify-center text-emerald-400 cursor-help"
+                                >
+                                  $
+                                </span>
+                                <Tooltip
+                                  id={tooltipId}
+                                  place="top"
+                                  className="!bg-slate-800 !text-white !border !border-white/20 !rounded-lg !px-3 !py-2 !text-sm !max-w-xs !z-50"
+                                  style={{ backgroundColor: 'rgb(30 41 55)', color: 'white' }}
+                                >
+                                  {tooltipText}
+                                </Tooltip>
+                              </>
                             );
                           })()}
                         </div>
