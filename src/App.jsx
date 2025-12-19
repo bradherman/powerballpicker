@@ -60,6 +60,7 @@ const PowerballGenerator = () => {
   const [drawsUpdatedAt, setDrawsUpdatedAt] = useState(null);
   const [jackpot, setJackpot] = useState(null);
   const [combinationsGenerated, setCombinationsGenerated] = useState(0);
+  const [strategy, setStrategy] = useState("balanced");
 
   useEffect(() => {
     let cancelled = false;
@@ -180,7 +181,18 @@ const PowerballGenerator = () => {
   const analysis = useMemo(() => {
     const mainFreq = {};
     const pbFreq = {};
+    const mainRecentFreq = {};
+    const pbRecentFreq = {};
 
+    // Get the most recent 36 draws (roughly 90 days: 3 draws/week * 12 weeks)
+    const sortedDraws = [...draws].sort((a, b) => {
+      const aDate = a._drawDateMs ?? 0;
+      const bDate = b._drawDateMs ?? 0;
+      return bDate - aDate; // Most recent first
+    });
+    const recentDraws = sortedDraws.slice(0, 36);
+
+    // Calculate overall frequency from all draws
     draws.forEach((draw) => {
       draw.main.forEach((n) => {
         mainFreq[n] = (mainFreq[n] || 0) + 1;
@@ -192,7 +204,19 @@ const PowerballGenerator = () => {
       }
     });
 
-    return { mainFreq, pbFreq };
+    // Calculate recent frequency from most recent 36 draws
+    recentDraws.forEach((draw) => {
+      draw.main.forEach((n) => {
+        mainRecentFreq[n] = (mainRecentFreq[n] || 0) + 1;
+      });
+
+      const pb = draw.powerball;
+      if (Number.isFinite(pb)) {
+        pbRecentFreq[pb] = (pbRecentFreq[pb] || 0) + 1;
+      }
+    });
+
+    return { mainFreq, pbFreq, mainRecentFreq, pbRecentFreq };
   }, [draws]);
 
   const clampNumber = (value, min, max) => {
@@ -203,19 +227,106 @@ const PowerballGenerator = () => {
 
   const mainBaseWeights = useMemo(() => {
     const weights = new Map();
-    for (let n = 1; n <= 69; n++) {
-      weights.set(n, (analysis.mainFreq[n] || 0) + 1); // +1 smoothing so nothing is impossible
+    const { mainFreq, mainRecentFreq } = analysis;
+
+    if (strategy === "hot") {
+      // Favor most frequent numbers overall
+      const maxFreq = Math.max(...Object.values(mainFreq), 1);
+      for (let n = 1; n <= 69; n++) {
+        const freq = mainFreq[n] || 0;
+        weights.set(n, (freq / maxFreq) * 10 + 1);
+      }
+    } else if (strategy === "recent-hot") {
+      // Favor numbers that appeared recently
+      const maxRecent = Math.max(...Object.values(mainRecentFreq), 1);
+      for (let n = 1; n <= 69; n++) {
+        const recent = mainRecentFreq[n] || 0;
+        const total = mainFreq[n] || 0;
+        weights.set(n, (recent / Math.max(maxRecent, 1)) * 10 + (total * 0.5) + 1);
+      }
+    } else if (strategy === "cold-recently") {
+      // Favor numbers that appeared least frequently in the last 90 days
+      const maxRecent = Math.max(...Object.values(mainRecentFreq), 1);
+      for (let n = 1; n <= 69; n++) {
+        const recent = mainRecentFreq[n] || 0;
+        // Invert recent frequency: less recent = higher weight
+        weights.set(n, ((maxRecent - recent) / Math.max(maxRecent, 1)) * 10 + 1);
+      }
+    } else if (strategy === "cold") {
+      // Favor numbers that haven't appeared in a while
+      const maxFreq = Math.max(...Object.values(mainFreq), 1);
+      for (let n = 1; n <= 69; n++) {
+        const freq = mainFreq[n] || 0;
+        // Invert: less frequent = higher weight
+        weights.set(n, ((maxFreq - freq) / maxFreq) * 10 + 1);
+      }
+    } else if (strategy === "even-spread") {
+      // Favor numbers spread across the range (avoid clustering)
+      const rangeSize = 69;
+      for (let n = 1; n <= 69; n++) {
+        // Slight preference for numbers in different ranges
+        const rangePos = n / rangeSize;
+        const freq = mainFreq[n] || 0;
+        // Combine range position with frequency, but reduce frequency weight
+        weights.set(n, (1 + Math.abs(rangePos - 0.5)) * 2 + (freq * 0.3) + 1);
+      }
+    } else {
+      // "balanced" - default historical frequency
+      for (let n = 1; n <= 69; n++) {
+        weights.set(n, (mainFreq[n] || 0) + 1);
+      }
     }
+
     return weights;
-  }, [analysis]);
+  }, [analysis, strategy]);
 
   const pbBaseWeights = useMemo(() => {
     const weights = new Map();
-    for (let n = 1; n <= 26; n++) {
-      weights.set(n, (analysis.pbFreq[n] || 0) + 1); // +1 smoothing
+    const { pbFreq, pbRecentFreq } = analysis;
+
+    if (strategy === "hot") {
+      const maxFreq = Math.max(...Object.values(pbFreq), 1);
+      for (let n = 1; n <= 26; n++) {
+        const freq = pbFreq[n] || 0;
+        weights.set(n, (freq / maxFreq) * 10 + 1);
+      }
+    } else if (strategy === "recent-hot") {
+      const maxRecent = Math.max(...Object.values(pbRecentFreq), 1);
+      for (let n = 1; n <= 26; n++) {
+        const recent = pbRecentFreq[n] || 0;
+        const total = pbFreq[n] || 0;
+        weights.set(n, (recent / Math.max(maxRecent, 1)) * 10 + (total * 0.5) + 1);
+      }
+    } else if (strategy === "cold-recently") {
+      // Favor numbers that appeared least frequently in the last 90 days
+      const maxRecent = Math.max(...Object.values(pbRecentFreq), 1);
+      for (let n = 1; n <= 26; n++) {
+        const recent = pbRecentFreq[n] || 0;
+        // Invert recent frequency: less recent = higher weight
+        weights.set(n, ((maxRecent - recent) / Math.max(maxRecent, 1)) * 10 + 1);
+      }
+    } else if (strategy === "cold") {
+      const maxFreq = Math.max(...Object.values(pbFreq), 1);
+      for (let n = 1; n <= 26; n++) {
+        const freq = pbFreq[n] || 0;
+        weights.set(n, ((maxFreq - freq) / maxFreq) * 10 + 1);
+      }
+    } else if (strategy === "even-spread") {
+      const rangeSize = 26;
+      for (let n = 1; n <= 26; n++) {
+        const rangePos = n / rangeSize;
+        const freq = pbFreq[n] || 0;
+        weights.set(n, (1 + Math.abs(rangePos - 0.5)) * 2 + (freq * 0.3) + 1);
+      }
+    } else {
+      // "balanced" - default
+      for (let n = 1; n <= 26; n++) {
+        weights.set(n, (pbFreq[n] || 0) + 1);
+      }
     }
+
     return weights;
-  }, [analysis]);
+  }, [analysis, strategy]);
 
   const pickOneBlended = (availableNums, baseWeights, alpha) => {
     // alpha: 0 -> fully weighted; 1 -> fully uniform
@@ -1422,8 +1533,37 @@ const PowerballGenerator = () => {
                       className="mt-3 w-full accent-red-400"
                     />
                     <p className="mt-2 text-xs text-white/60">
-                      0% leans into historical weighting. 100% is uniform
-                      random.
+                      0% uses the selected strategy fully. 100% ignores strategy and is uniform random.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="strategy"
+                      className="block text-sm font-semibold text-white/90"
+                    >
+                      Strategy
+                    </label>
+                    <select
+                      id="strategy"
+                      value={strategy}
+                      onChange={(e) => setStrategy(e.target.value)}
+                      className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-red-400/30"
+                    >
+                      <option value="balanced">Balanced (Historical frequency)</option>
+                      <option value="hot">Hot Numbers (Most frequent)</option>
+                      <option value="recent-hot">Recent Hot (Most recent 36 draws)</option>
+                      <option value="cold-recently">Cold Recently (Least frequent in recent 36 draws)</option>
+                      <option value="cold">Cold Numbers (Least frequent)</option>
+                      <option value="even-spread">Even Spread (Avoid clustering)</option>
+                    </select>
+                    <p className="mt-2 text-xs text-white/60">
+                      {strategy === "balanced" && "Uses overall historical frequency"}
+                      {strategy === "hot" && "Favors numbers that appear most often"}
+                      {strategy === "recent-hot" && "Favors numbers from the most recent 36 draws"}
+                      {strategy === "cold-recently" && "Favors numbers that rarely appeared in the most recent 36 draws"}
+                      {strategy === "cold" && "Favors numbers that rarely appear"}
+                      {strategy === "even-spread" && "Favors numbers spread across the range"}
                     </p>
                   </div>
 
