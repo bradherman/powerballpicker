@@ -322,8 +322,10 @@ const PowerballGenerator = () => {
   const [editValue, setEditValue] = useState("");
   const [editError, setEditError] = useState(null);
   const [copied, setCopied] = useState(null);
+  const [justGenerated, setJustGenerated] = useState(false);
   const [showStats, setShowStats] = useState(true);
   const [showChecker, setShowChecker] = useState(false);
+  const [showPrizeTable, setShowPrizeTable] = useState(false);
   const checkerRef = useRef(null);
   const initialPicksCountedRef = useRef(false);
   const [checkerInput, setCheckerInput] = useState("");
@@ -1154,6 +1156,10 @@ const PowerballGenerator = () => {
                       )
                     );
 
+                    // Show success feedback
+                    setJustGenerated(true);
+                    setTimeout(() => setJustGenerated(false), 2500);
+
                     // Increment counter
                     try {
                       const res = await fetch("/api/powerball/counter/increment", {
@@ -1174,9 +1180,29 @@ const PowerballGenerator = () => {
                       // Silently fail - counter is not critical
                     }
                   }}
-                  className="mt-5 w-full rounded-xl bg-linear-to-r from-red-500 via-red-500 to-orange-400 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-red-500/20 ring-1 ring-white/10 transition hover:brightness-110 active:brightness-95 disabled:opacity-60"
+                  className="mt-5 w-full rounded-xl bg-linear-to-r from-red-500 via-red-500 to-orange-400 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-red-500/20 ring-1 ring-white/10 transition hover:brightness-110 active:brightness-95 disabled:opacity-60 relative overflow-hidden"
                 >
-                  Generate New Picks
+                  <span className={`inline-flex items-center gap-2 transition-opacity duration-200 ${justGenerated ? 'opacity-0' : 'opacity-100'}`}>
+                    Generate New Picks
+                  </span>
+                  {justGenerated && (
+                    <span className="absolute inset-0 flex items-center justify-center gap-2 animate-[fadeInScale_0.3s_ease-out]">
+                      <svg
+                        className="h-5 w-5 animate-[checkmark_0.4s_ease-out_0.1s_both]"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={3}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M5 13l4 4L19 7"
+                        />
+                      </svg>
+                      <span>Generated!</span>
+                    </span>
+                  )}
                 </button>
 
                 <div className="mt-5 space-y-5">
@@ -1643,6 +1669,118 @@ const PowerballGenerator = () => {
                     <strong className="text-white">Note:</strong> Powerball is
                     random. Historical frequency does not predict future
                     results. Play responsibly.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-6 rounded-2xl bg-white/5 p-5 ring-1 ring-white/10 backdrop-blur">
+            <button
+              onClick={() => setShowPrizeTable(!showPrizeTable)}
+              className="w-full text-left font-semibold text-lg text-white flex justify-between items-center"
+            >
+              <span>💰 Prize Table</span>
+              <span className="text-white/70">{showPrizeTable ? "▼" : "▶"}</span>
+            </button>
+
+            {showPrizeTable && (
+              <div className="mt-4 space-y-4">
+                <div className="text-sm text-white/70">
+                  Prize amounts based on matching white balls and Powerball. Power Play multipliers apply to all prizes except the jackpot. Match 5 (no Powerball) is always $2M with Power Play.
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="border-b border-white/10">
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-white/90">
+                          White Balls
+                        </th>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-white/90">
+                          Powerball
+                        </th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-white/90">
+                          Base Prize
+                        </th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-white/90">
+                          Power Play 2x
+                        </th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-white/90">
+                          Power Play 3x
+                        </th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-white/90">
+                          Power Play 4x
+                        </th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-white/90">
+                          Power Play 5x
+                        </th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-white/90">
+                          Power Play 10x
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[
+                        { white: 5, pb: 1 },
+                        { white: 5, pb: 0 },
+                        { white: 4, pb: 1 },
+                        { white: 4, pb: 0 },
+                        { white: 3, pb: 1 },
+                        { white: 3, pb: 0 },
+                        { white: 2, pb: 1 },
+                        { white: 1, pb: 1 },
+                        { white: 0, pb: 1 },
+                      ].map(({ white, pb }) => {
+                        const basePrize = computePrize(white, pb === 1, null);
+                        const multipliers = [2, 3, 4, 5, 10];
+                        const powerPlayPrizes = multipliers.map((mult) =>
+                          computePrize(white, pb === 1, mult)
+                        );
+
+                        return (
+                          <tr
+                            key={`${white}-${pb}`}
+                            className="border-b border-white/5 hover:bg-white/5"
+                          >
+                            <td className="px-4 py-3 text-sm font-semibold text-white">
+                              {white}
+                            </td>
+                            <td className="px-4 py-3 text-sm font-semibold text-white">
+                              {pb}
+                            </td>
+                            <td className="px-4 py-3 text-center text-sm text-white/90">
+                              {formatPrize(basePrize.base)}
+                            </td>
+                            {powerPlayPrizes.map((ppPrize, idx) => (
+                              <td
+                                key={multipliers[idx]}
+                                className="px-4 py-3 text-center text-sm text-white/90"
+                              >
+                                {ppPrize.withPowerPlay != null
+                                  ? formatPrize(ppPrize.withPowerPlay)
+                                  : "—"}
+                              </td>
+                            ))}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <p className="text-sm text-white/70">
+                    <strong className="text-white">Note:</strong> Prize amounts are approximate and may vary. The jackpot is not multiplied by Power Play. Match 5 (no Powerball) with Power Play is always $2 million regardless of the multiplier drawn. Visit{" "}
+                    <a
+                      href="https://www.powerball.com/powerball-prize-chart"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-semibold text-white underline decoration-white/20 underline-offset-2 hover:decoration-white/40"
+                    >
+                      powerball.com
+                    </a>{" "}
+                    for official prize information.
                   </p>
                 </div>
               </div>
