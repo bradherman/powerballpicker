@@ -1643,7 +1643,7 @@ const PowerballGenerator = () => {
                                 <Tooltip
                                   id={tooltipId}
                                   place="top"
-                                  className="!bg-slate-800 !text-white !border !border-white/20 !rounded-lg !px-3 !py-2 !text-sm !max-w-xs !z-50"
+                                  className="bg-slate-800! text-white! border! border-white/20! rounded-lg! px-3! py-2! text-sm! max-w-xs! z-50!"
                                   style={{ backgroundColor: 'rgb(30 41 55)', color: 'white' }}
                                 >
                                   {tooltipText}
