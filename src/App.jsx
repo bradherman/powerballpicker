@@ -323,7 +323,8 @@ const PowerballGenerator = () => {
   const [editError, setEditError] = useState(null);
   const [copied, setCopied] = useState(null);
   const [justGenerated, setJustGenerated] = useState(false);
-  const [picksGeneratedAt, setPicksGeneratedAt] = useState(null);
+  const [animatingBalls, setAnimatingBalls] = useState(new Set());
+  const [displayPicks, setDisplayPicks] = useState(() => generatePicks(5, 70, [], []));
   const [showStats, setShowStats] = useState(true);
   const [showChecker, setShowChecker] = useState(false);
   const [showPrizeTable, setShowPrizeTable] = useState(false);
@@ -331,6 +332,13 @@ const PowerballGenerator = () => {
   const initialPicksCountedRef = useRef(false);
   const [checkerInput, setCheckerInput] = useState("");
   const [checkerResults, setCheckerResults] = useState([]);
+
+  // Sync displayPicks with picks when not animating
+  useEffect(() => {
+    if (animatingBalls.size === 0 && picks.length > 0) {
+      setDisplayPicks(picks);
+    }
+  }, [animatingBalls.size, picks]);
 
   const latestDraw = useMemo(() => {
     if (!Array.isArray(draws) || draws.length === 0) return null;
@@ -979,11 +987,25 @@ const PowerballGenerator = () => {
 
       if (kind === "pb") {
         pick.powerball = next;
-        return copy;
+      } else {
+        pick.main[index] = next;
+        pick.main.sort((a, b) => a - b);
       }
+      return copy;
+    });
 
-      pick.main[index] = next;
-      pick.main.sort((a, b) => a - b);
+    // Also update displayPicks
+    setDisplayPicks((prev) => {
+      const copy = prev.map((p) => ({ ...p, main: [...p.main] }));
+      const pick = copy[lineIdx];
+      if (!pick) return prev;
+
+      if (kind === "pb") {
+        pick.powerball = next;
+      } else {
+        pick.main[index] = next;
+        pick.main.sort((a, b) => a - b);
+      }
       return copy;
     });
 
@@ -1177,21 +1199,101 @@ const PowerballGenerator = () => {
                     setEditValue("");
                     setEditError(null);
                     setCopied(null);
-                    setPicks(
-                      generatePicks(
-                        numLines,
-                        randomness,
-                        mainLocked,
-                        powerballLocked
-                      )
+
+                    const newPicks = generatePicks(
+                      numLines,
+                      randomness,
+                      mainLocked,
+                      powerballLocked
                     );
+
+                    // Start animation: set all balls to white/blank first
+                    setAnimatingBalls(new Set());
+                    setDisplayPicks(
+                      newPicks.map((pick) => ({
+                        main: pick.main.map(() => null),
+                        powerball: null,
+                      }))
+                    );
+
+                    // Animate each ball in sequence
+                    const animateBall = (pickIdx, ballIdx, isPowerball, finalValue) => {
+                      const ballKey = `${pickIdx}-${ballIdx}-${isPowerball ? 'pb' : 'main'}`;
+                      setAnimatingBalls((prev) => new Set(prev).add(ballKey));
+
+                      // Spin through numbers
+                      const spinDuration = 800 + Math.random() * 400; // 800-1200ms
+                      const spinSteps = 15 + Math.floor(Math.random() * 10); // 15-25 steps
+                      const stepDuration = spinDuration / spinSteps;
+                      let currentStep = 0;
+
+                      const spinInterval = setInterval(() => {
+                        currentStep++;
+                        const range = isPowerball ? 26 : 69;
+                        const randomValue = Math.floor(Math.random() * range) + 1;
+
+                        setDisplayPicks((prev) => {
+                          const updated = prev.map((p, pIdx) => {
+                            if (pIdx !== pickIdx) return p;
+                            const newPick = { ...p };
+                            if (isPowerball) {
+                              newPick.powerball = randomValue;
+                            } else {
+                              newPick.main = [...p.main];
+                              newPick.main[ballIdx] = randomValue;
+                            }
+                            return newPick;
+                          });
+                          return updated;
+                        });
+
+                        if (currentStep >= spinSteps) {
+                          clearInterval(spinInterval);
+                          // Set final value
+                          setDisplayPicks((prev) => {
+                            const updated = prev.map((p, pIdx) => {
+                              if (pIdx !== pickIdx) return p;
+                              const newPick = { ...p };
+                              if (isPowerball) {
+                                newPick.powerball = finalValue;
+                              } else {
+                                newPick.main = [...p.main];
+                                newPick.main[ballIdx] = finalValue;
+                              }
+                              return newPick;
+                            });
+                            return updated;
+                          });
+                          setAnimatingBalls((prev) => {
+                            const next = new Set(prev);
+                            next.delete(ballKey);
+                            return next;
+                          });
+                        }
+                      }, stepDuration);
+                    };
+
+                    // Animate all balls in sequence within each row
+                    newPicks.forEach((pick, pickIdx) => {
+                      // Animate main balls
+                      pick.main.forEach((finalValue, ballIdx) => {
+                        setTimeout(() => {
+                          animateBall(pickIdx, ballIdx, false, finalValue);
+                        }, pickIdx * 100 + ballIdx * 150);
+                      });
+
+                      // Animate powerball after main balls
+                      setTimeout(() => {
+                        animateBall(pickIdx, 0, true, pick.powerball);
+                      }, pickIdx * 100 + pick.main.length * 150 + 100);
+                    });
+
+                    // Set picks immediately so finalPick is available during rendering
+                    setPicks(newPicks);
 
                     // Show success feedback
                     setJustGenerated(true);
                     setTimeout(() => setJustGenerated(false), 2500);
-
-                    // Set timestamp for highlight animation
-                    setPicksGeneratedAt(Date.now());
 
                     // Increment counter
                     try {
@@ -1488,14 +1590,12 @@ const PowerballGenerator = () => {
                 </div>
 
                 <div className="mt-5 space-y-4">
-                  {picks.map((pick, idx) => {
-                    const isNewlyGenerated = picksGeneratedAt && (Date.now() - picksGeneratedAt) < 75;
+                  {displayPicks.map((pick, idx) => {
+                    const finalPick = picks[idx];
                     return (
                     <div
                       key={idx}
-                      className={`rounded-2xl border border-white/10 bg-white/5 p-4 transition hover:bg-white/7 ${
-                        isNewlyGenerated ? 'animate-[highlightGlow_1s_ease-out]' : ''
-                      }`}
+                      className="rounded-2xl border border-white/10 bg-white/5 p-4 transition hover:bg-white/7"
                     >
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex items-center gap-2 text-sm font-semibold text-white/90">
@@ -1508,18 +1608,22 @@ const PowerballGenerator = () => {
                         <div className="flex items-center gap-3 flex-wrap">
                           <div className="flex gap-2">
                             {pick.main.map((num, i) => {
+                              const ballKey = `${idx}-${i}-main`;
+                              const isAnimating = animatingBalls.has(ballKey);
+                              const displayNum = num ?? (finalPick?.main?.[i] ?? null);
                               const isEditing =
                                 editing?.lineIdx === idx &&
                                 editing?.kind === "main" &&
                                 editing?.index === i;
 
                               if (isEditing) {
+                                const editValue = finalPick?.main?.[i] ?? num;
                                 return (
                                   <div
                                     key={i}
                                     className={[
                                       "h-12 w-12 rounded-full bg-white flex items-center justify-center shadow-sm",
-                                      mainLocked.includes(num)
+                                      editValue && mainLocked.includes(editValue)
                                         ? "ring-4 ring-inset ring-amber-400/80"
                                         : "ring-2 ring-red-400/40",
                                     ].join(" ")}
@@ -1545,20 +1649,29 @@ const PowerballGenerator = () => {
                                 );
                               }
 
+                              const finalValue = finalPick?.main?.[i];
+                              const isLocked = finalValue && mainLocked.includes(finalValue);
+
                               return (
                                 <button
                                   key={i}
                                   type="button"
                                   title="Click to edit"
                                   onClick={() => beginEdit(idx, "main", i)}
+                                  disabled={isAnimating || displayNum === null}
                                   className={[
-                                    "h-12 w-12 rounded-full bg-white text-slate-900 font-extrabold shadow-sm transition hover:brightness-105",
-                                    mainLocked.includes(num)
+                                    "h-12 w-12 rounded-full font-extrabold shadow-sm transition",
+                                    displayNum === null
+                                      ? "bg-white/20 text-white/40 cursor-not-allowed"
+                                      : isAnimating
+                                      ? "bg-white text-slate-900 ring-2 ring-red-400/60 animate-pulse"
+                                      : "bg-white text-slate-900 hover:brightness-105",
+                                    isLocked
                                       ? "ring-4 ring-inset ring-amber-400/80"
-                                      : "ring-1 ring-white/25",
+                                      : displayNum !== null && "ring-1 ring-white/25",
                                   ].join(" ")}
                                 >
-                                  {num.toString().padStart(2, "0")}
+                                  {displayNum ? displayNum.toString().padStart(2, "0") : "—"}
                                 </button>
                               );
                             })}
@@ -1602,20 +1715,31 @@ const PowerballGenerator = () => {
                               );
                             }
 
+                            const pbBallKey = `${idx}-0-pb`;
+                            const isPbAnimating = animatingBalls.has(pbBallKey);
+                            const displayPb = pick.powerball ?? (finalPick?.powerball ?? null);
+                            const finalPbValue = finalPick?.powerball;
+                            const isPbLocked = finalPbValue && powerballLocked.length > 0 && powerballLocked.includes(finalPbValue);
+
                             return (
                               <button
                                 type="button"
                                 title="Click to edit"
                                 onClick={() => beginEdit(idx, "pb", null)}
+                                disabled={isPbAnimating || displayPb === null}
                                 className={[
-                                  "h-12 w-12 rounded-full bg-linear-to-b from-red-500 to-red-700 text-white font-extrabold shadow-lg shadow-red-500/15 transition hover:brightness-110",
-                                  powerballLocked.length > 0 &&
-                                  powerballLocked.includes(pick.powerball)
+                                  "h-12 w-12 rounded-full font-extrabold shadow-lg transition",
+                                  displayPb === null
+                                    ? "bg-red-500/20 text-white/40 cursor-not-allowed ring-1 ring-red-300/20"
+                                    : isPbAnimating
+                                    ? "bg-linear-to-b from-red-500 to-red-700 text-white ring-2 ring-red-400/60 animate-pulse"
+                                    : "bg-linear-to-b from-red-500 to-red-700 text-white hover:brightness-110",
+                                  isPbLocked
                                     ? "ring-4 ring-inset ring-amber-200/90"
-                                    : "ring-1 ring-red-300/30",
+                                    : displayPb !== null && "ring-1 ring-red-300/30",
                                 ].join(" ")}
                               >
-                                {pick.powerball.toString().padStart(2, "0")}
+                                {displayPb ? displayPb.toString().padStart(2, "0") : "—"}
                               </button>
                             );
                           })()}
