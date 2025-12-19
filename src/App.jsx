@@ -779,11 +779,11 @@ const PowerballGenerator = () => {
   const formatOdds = (odds) => {
     if (!odds) return "—";
     if (odds >= 1000000) {
-      return `1 in ${(odds / 1000000).toFixed(2)}M`;
+      return `1/${(odds / 1000000).toFixed(1)}M`;
     } else if (odds >= 1000) {
-      return `1 in ${(odds / 1000).toFixed(2)}K`;
+      return `1/${(odds / 1000).toFixed(1)}K`;
     } else {
-      return `1 in ${odds.toFixed(2)}`;
+      return `1/${odds.toFixed(1)}`;
     }
   };
 
@@ -1773,16 +1773,16 @@ const PowerballGenerator = () => {
                             key={`${white}-${pb}`}
                             className="border-b border-white/5 hover:bg-white/5"
                           >
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-1.5 flex-wrap">
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              <div className="flex items-center gap-1">
                                 {Array.from({ length: white }, (_, i) => (
                                   <div
                                     key={`white-${i}`}
-                                    className="h-8 w-8 rounded-full bg-white text-slate-900 font-extrabold text-[10px] flex items-center justify-center ring-1 ring-white/20 shadow-sm"
+                                    className="h-5 w-5 rounded-full bg-white text-slate-900 font-extrabold text-[8px] flex items-center justify-center ring-1 ring-white/20 shadow-sm"
                                   />
                                 ))}
                                 {pb === 1 && (
-                                  <div className="h-8 w-8 rounded-full bg-linear-to-b from-red-500 to-red-700 text-white font-extrabold text-[10px] flex items-center justify-center ring-1 ring-red-300/30 shadow-sm" />
+                                  <div className="h-5 w-5 rounded-full bg-linear-to-b from-red-500 to-red-700 text-white font-extrabold text-[8px] flex items-center justify-center ring-1 ring-red-300/30 shadow-sm" />
                                 )}
                               </div>
                             </td>
@@ -1790,14 +1790,18 @@ const PowerballGenerator = () => {
                               {formatOdds(odds)}
                             </td>
                             <td className="px-4 py-3 text-center text-sm text-white/90">
-                              {formatPrize(basePrize.base)}
+                              {white === 5 && pb === 1 && basePrize.base === "JACKPOT" && jackpot?.amount
+                                ? formatJackpot(jackpot.amount)
+                                : formatPrize(basePrize.base)}
                             </td>
                             {powerPlayPrizes.map((ppPrize, idx) => (
                               <td
                                 key={multipliers[idx]}
                                 className="px-4 py-3 text-center text-sm text-white/90"
                               >
-                                {ppPrize.withPowerPlay != null
+                                {white === 5 && pb === 1 && ppPrize.withPowerPlay === "JACKPOT" && jackpot?.amount
+                                  ? formatJackpot(jackpot.amount)
+                                  : ppPrize.withPowerPlay != null
                                   ? formatPrize(ppPrize.withPowerPlay)
                                   : "—"}
                               </td>
