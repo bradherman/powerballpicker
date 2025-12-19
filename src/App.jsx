@@ -672,6 +672,24 @@ const PowerballGenerator = () => {
     return `$${amount}`;
   };
 
+  const calculatePickPrize = (pick) => {
+    if (!latestDraw || !pick || !Array.isArray(pick.main) || pick.main.length !== 5) {
+      return null;
+    }
+
+    const winningSet = new Set(latestDraw.main);
+    const whiteMatches = pick.main.reduce(
+      (acc, n) => acc + (winningSet.has(n) ? 1 : 0),
+      0
+    );
+    const pbMatch = pick.powerball === latestDraw.powerball;
+    const prize = computePrize(whiteMatches, pbMatch, latestDraw.multiplier);
+
+    if (!isWinningPrize(prize.base)) return null;
+
+    return prize;
+  };
+
   const isWinningPrize = (value) => {
     if (value === "JACKPOT") return true;
     const amount = Number(value);
@@ -1603,6 +1621,23 @@ const PowerballGenerator = () => {
                             {idx + 1}
                           </span>
                           <span>Pick</span>
+                          {(() => {
+                            const prize = calculatePickPrize(finalPick);
+                            if (!prize) return null;
+                            const basePrize = formatPrize(prize.base);
+                            const ppPrize = prize.withPowerPlay != null ? formatPrize(prize.withPowerPlay) : null;
+                            const tooltipText = ppPrize
+                              ? `Would have won: ${basePrize} (${ppPrize} with Power Play)`
+                              : `Would have won: ${basePrize}`;
+                            return (
+                              <span
+                                className="inline-flex items-center justify-center text-emerald-400 cursor-help"
+                                title={tooltipText}
+                              >
+                                $
+                              </span>
+                            );
+                          })()}
                         </div>
 
                         <div className="flex items-center gap-3 flex-wrap">
