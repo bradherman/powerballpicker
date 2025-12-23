@@ -86,9 +86,88 @@ async function fetchLatestDrawFromPowerballCom(env) {
 
     const html = await res.text();
 
+    // Debug: log HTML snippet if in test mode
+    if (env.DEBUG_PARSING) {
+      console.log("HTML length:", html.length);
+      // Log a snippet around "winning" or "numbers"
+      const winningIndex = html.toLowerCase().indexOf("winning");
+      if (winningIndex >= 0) {
+        console.log(
+          "HTML snippet around 'winning':",
+          html.slice(Math.max(0, winningIndex - 200), winningIndex + 500)
+        );
+      }
+    }
+
     let winningNumbers = null;
     let drawDate = null;
     let multiplier = null;
+
+    // Method 1: Parse from HTML structure (most reliable for powerball.com)
+    // Structure: "Winning Numbers" -> date in title-date -> white-balls divs -> powerball div -> multiplier
+
+    // Find the "Winning Numbers" section
+    const winningIndex = html.toLowerCase().indexOf("winning numbers");
+    if (winningIndex >= 0) {
+      const section = html.slice(winningIndex, winningIndex + 3000);
+
+      // Extract date from title-date class
+      const dateMatch = section.match(/title-date[^>]*>([^<]+)</i);
+      if (dateMatch) {
+        const dateStr = dateMatch[1].trim();
+        const parsed = new Date(dateStr);
+        if (Number.isFinite(parsed.getTime())) {
+          drawDate = parsed.toISOString();
+        }
+      }
+
+      // Extract white balls (look for "white-balls" class followed by a number)
+      const whiteBallMatches = [...section.matchAll(/white-balls[^>]*>(\d{1,2})</gi)];
+      const whiteBalls = [];
+      for (const match of whiteBallMatches) {
+        const num = Number.parseInt(match[1], 10);
+        if (Number.isFinite(num) && num >= 1 && num <= 69 && !whiteBalls.includes(num)) {
+          whiteBalls.push(num);
+        }
+        if (whiteBalls.length >= 5) break;
+      }
+
+      // Extract powerball - it's in a div with class containing "powerball" but NOT "white-balls"
+      // The structure shows: <div class="form-control col powerball item-powerball">7</div>
+      // We need to find the powerball div that comes after the white-balls divs
+      const lastWhiteBallIndex = section.lastIndexOf("white-balls");
+      if (lastWhiteBallIndex >= 0) {
+        // Look for powerball div after the last white ball
+        const afterWhiteBalls = section.substring(lastWhiteBallIndex);
+        // Find div with "powerball" class (but not "white-balls")
+        const powerballDivMatch = afterWhiteBalls.match(
+          /<div[^>]*class="[^"]*\bpowerball\b[^"]*"[^>]*>(\d{1,2})</i
+        );
+        if (powerballDivMatch) {
+          const pb = Number.parseInt(powerballDivMatch[1], 10);
+          if (
+            Number.isFinite(pb) &&
+            pb >= 1 &&
+            pb <= 26 &&
+            whiteBalls.length === 5
+          ) {
+            winningNumbers = {
+              main: whiteBalls,
+              powerball: pb,
+            };
+          }
+        }
+      }
+
+      // Extract multiplier (look for "multiplier" class)
+      const multiplierMatch = section.match(/multiplier[^>]*>(\d+)x?</i);
+      if (multiplierMatch) {
+        const mult = Number.parseInt(multiplierMatch[1], 10);
+        if (Number.isFinite(mult) && mult >= 2 && mult <= 10) {
+          multiplier = mult;
+        }
+      }
+    }
 
     // First, try to find in JSON data embedded in script tags (most reliable)
     const scriptMatches = html.match(/<script[^>]*>([\s\S]*?)<\/script>/gi);
@@ -1101,6 +1180,59 @@ export default {
       } catch (e) {
         return jsonResponse(
           { error: e?.message || "Failed to get winnings" },
+          { status: 500 }
+        );
+      }
+    }
+
+    // Test endpoint to debug powerball.com parsing
+    if (request.method === "GET" && url.pathname === "/api/powerball/test-parse") {
+      try {
+        // Enable debug mode
+        const debugEnv = { ...env, DEBUG_PARSING: true };
+        const result = await fetchLatestDrawFromPowerballCom(debugEnv);
+
+        // Also fetch the raw HTML for inspection
+        let htmlSnippet = null;
+        try {
+          const res = await fetch("https://www.powerball.com/", {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (compatible; PowerballSync/1.0)",
+            },
+            cf: { cacheTtl: 0, cacheEverything: false },
+          });
+          if (res.ok) {
+            const html = await res.text();
+            // Find relevant sections
+            const winningIndex = html.toLowerCase().indexOf("winning");
+            if (winningIndex >= 0) {
+              htmlSnippet = html.slice(
+                Math.max(0, winningIndex - 300),
+                Math.min(html.length, winningIndex + 1000)
+              );
+            }
+          }
+        } catch {
+          // Ignore
+        }
+
+        return jsonResponse(
+          {
+            found: result !== null,
+            draw: result,
+            timestamp: new Date().toISOString(),
+            htmlSnippet: htmlSnippet?.substring(0, 2000), // Limit size
+          },
+          {
+            headers: {
+              "Cache-Control": "no-cache",
+              "Access-Control-Allow-Origin": "*",
+            },
+          }
+        );
+      } catch (e) {
+        return jsonResponse(
+          { error: e?.message || "Failed to parse", stack: e?.stack },
           { status: 500 }
         );
       }
