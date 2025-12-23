@@ -71,6 +71,263 @@ function parseWinningNumbers(winningNumbers) {
   return { main, powerball };
 }
 
+async function fetchLatestDrawFromPowerballCom(env) {
+  try {
+    const res = await fetch("https://www.powerball.com/", {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; PowerballSync/1.0)",
+      },
+      cf: { cacheTtl: 0, cacheEverything: false },
+    });
+
+    if (!res.ok) {
+      throw new Error(`Failed to fetch powerball.com: ${res.status}`);
+    }
+
+    const html = await res.text();
+
+    let winningNumbers = null;
+    let drawDate = null;
+    let multiplier = null;
+
+    // First, try to find in JSON data embedded in script tags (most reliable)
+    const scriptMatches = html.match(/<script[^>]*>([\s\S]*?)<\/script>/gi);
+    if (scriptMatches) {
+      for (const script of scriptMatches) {
+        try {
+          // Look for JSON objects that might contain draw data
+          // Try to find objects with winning numbers or draw information
+          const jsonCandidates = script.match(/\{[^{}]*"winningNumbers"[^{}]*\}|\{[^{}]*"numbers"[^{}]*\}|\{[^{}]*"whiteBalls"[^{}]*\}|\{[^{}]*"drawDate"[^{}]*\}/gi);
+
+          if (jsonCandidates) {
+            for (const candidate of jsonCandidates) {
+              try {
+                const jsonData = JSON.parse(candidate);
+
+                // Try various field names for numbers
+                const nums =
+                  jsonData.winningNumbers ||
+                  jsonData.numbers ||
+                  jsonData.whiteBalls ||
+                  jsonData.mainNumbers ||
+                  jsonData.white;
+                const pb =
+                  jsonData.powerball ||
+                  jsonData.redBall ||
+                  jsonData.powerBall ||
+                  jsonData.red;
+
+                if (Array.isArray(nums) && nums.length === 5 && pb != null) {
+                  const mainNums = nums
+                    .map((n) => Number(n))
+                    .filter((n) => Number.isFinite(n) && n >= 1 && n <= 69);
+                  const pbNum = Number(pb);
+
+                  if (
+                    mainNums.length === 5 &&
+                    Number.isFinite(pbNum) &&
+                    pbNum >= 1 &&
+                    pbNum <= 26
+                  ) {
+                    winningNumbers = {
+                      main: mainNums,
+                      powerball: pbNum,
+                    };
+
+                    // Also get date and multiplier if available
+                    if (jsonData.drawDate || jsonData.drawingDate || jsonData.date) {
+                      const dateStr = jsonData.drawDate || jsonData.drawingDate || jsonData.date;
+                      const parsed = new Date(dateStr);
+                      if (Number.isFinite(parsed.getTime())) {
+                        drawDate = parsed.toISOString();
+                      }
+                    }
+
+                    if (jsonData.multiplier || jsonData.powerPlay) {
+                      const mult = Number(jsonData.multiplier || jsonData.powerPlay);
+                      if (Number.isFinite(mult) && mult >= 2) {
+                        multiplier = mult;
+                      }
+                    }
+
+                    break;
+                  }
+                }
+              } catch {
+                // Try to parse larger JSON objects
+                try {
+                  // Look for larger JSON structures
+                  const largerMatch = script.match(/\{[\s\S]{100,10000}\}/);
+                  if (largerMatch) {
+                    const jsonData = JSON.parse(largerMatch[0]);
+
+                    // Recursively search for winning numbers
+                    const findNumbers = (obj) => {
+                      if (!obj || typeof obj !== "object") return null;
+
+                      for (const key in obj) {
+                        const val = obj[key];
+                        if (Array.isArray(val) && val.length === 5) {
+                          const nums = val
+                            .map((n) => Number(n))
+                            .filter((n) => Number.isFinite(n) && n >= 1 && n <= 69);
+                          if (nums.length === 5) {
+                            // Look for powerball nearby
+                            const pbKey = Object.keys(obj).find(
+                              (k) =>
+                                k.toLowerCase().includes("power") ||
+                                k.toLowerCase().includes("red") ||
+                                k.toLowerCase().includes("pb")
+                            );
+                            const pb = pbKey ? Number(obj[pbKey]) : null;
+
+                            if (pb != null && Number.isFinite(pb) && pb >= 1 && pb <= 26) {
+                              return { main: nums, powerball: pb };
+                            }
+                          }
+                        }
+                        if (typeof val === "object") {
+                          const found = findNumbers(val);
+                          if (found) return found;
+                        }
+                      }
+                      return null;
+                    };
+
+                    const found = findNumbers(jsonData);
+                    if (found) {
+                      winningNumbers = found;
+
+                      // Try to find date
+                      const findDate = (obj) => {
+                        if (!obj || typeof obj !== "object") return null;
+                        for (const key in obj) {
+                          const val = obj[key];
+                          if (
+                            typeof key === "string" &&
+                            (key.toLowerCase().includes("date") ||
+                              key.toLowerCase().includes("draw"))
+                          ) {
+                            const parsed = new Date(val);
+                            if (Number.isFinite(parsed.getTime())) {
+                              return parsed.toISOString();
+                            }
+                          }
+                          if (typeof val === "object") {
+                            const found = findDate(val);
+                            if (found) return found;
+                          }
+                        }
+                        return null;
+                      };
+
+                      drawDate = findDate(jsonData);
+                    }
+                  }
+                } catch {
+                  // Continue
+                }
+              }
+            }
+          }
+        } catch {
+          // Continue to next script
+        }
+      }
+    }
+
+    // Fallback: Try to find numbers in HTML text patterns
+    if (!winningNumbers) {
+      // Look for patterns like "12 34 56 78 90 26" where first 5 are 1-69 and last is 1-26
+      const numberPattern = /(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})/g;
+      let match;
+      while ((match = numberPattern.exec(html)) !== null) {
+        const nums = match.slice(1, 7).map((n) => Number.parseInt(n, 10));
+        const main = nums.slice(0, 5);
+        const pb = nums[5];
+
+        if (
+          main.every((n) => Number.isFinite(n) && n >= 1 && n <= 69) &&
+          Number.isFinite(pb) &&
+          pb >= 1 &&
+          pb <= 26 &&
+          new Set(main).size === 5 // All unique
+        ) {
+          // Check if this appears near "winning" or "numbers" text
+          const contextStart = Math.max(0, match.index - 200);
+          const contextEnd = Math.min(html.length, match.index + match[0].length + 200);
+          const context = html.slice(contextStart, contextEnd).toLowerCase();
+
+          if (
+            context.includes("winning") ||
+            context.includes("numbers") ||
+            context.includes("draw")
+          ) {
+            winningNumbers = { main, powerball: pb };
+            break;
+          }
+        }
+      }
+    }
+
+    // Try to find draw date in HTML text
+    if (!drawDate) {
+      const datePatterns = [
+        /Drawing\s+Date[:\s]+([A-Za-z]+\s+\d{1,2},?\s+\d{4})/i,
+        /Draw\s+Date[:\s]+(\d{1,2}\/\d{1,2}\/\d{4})/i,
+        /(\d{4}-\d{2}-\d{2})/,
+        /([A-Za-z]+\s+\d{1,2},?\s+\d{4})/,
+      ];
+
+      for (const pattern of datePatterns) {
+        const match = html.match(pattern);
+        if (match) {
+          const dateStr = match[1];
+          const parsed = new Date(dateStr);
+          if (Number.isFinite(parsed.getTime())) {
+            drawDate = parsed.toISOString();
+            break;
+          }
+        }
+      }
+    }
+
+    // Try to find Power Play multiplier
+    if (!multiplier) {
+      const multiplierPatterns = [
+        /Power\s+Play[:\s]+(\d+)x?/i,
+        /Multiplier[:\s]+(\d+)/i,
+        /"multiplier"\s*:\s*(\d+)/i,
+      ];
+
+      for (const pattern of multiplierPatterns) {
+        const match = html.match(pattern);
+        if (match) {
+          const mult = Number.parseInt(match[1], 10);
+          if (Number.isFinite(mult) && mult >= 2 && mult <= 10) {
+            multiplier = mult;
+            break;
+          }
+        }
+      }
+    }
+
+    if (!winningNumbers) {
+      return null;
+    }
+
+    return {
+      drawDate,
+      main: winningNumbers.main,
+      powerball: winningNumbers.powerball,
+      multiplier,
+    };
+  } catch (e) {
+    console.error("Failed to fetch latest draw from powerball.com:", e);
+    return null;
+  }
+}
+
 function toIntOrNull(value) {
   if (value === null || value === undefined || value === "") return null;
   const n = Number.parseInt(String(value), 10);
@@ -219,12 +476,51 @@ async function syncLatestDraws(env) {
   }
 
   const payload = await res.json();
-  const draws = normalizeSocrataRowsJson(payload);
+  let draws = normalizeSocrataRowsJson(payload);
+
+  // Try to fetch the latest draw from powerball.com
+  const powerballComDraw = await fetchLatestDrawFromPowerballCom(env);
+
+  if (powerballComDraw && powerballComDraw.main && powerballComDraw.main.length === 5) {
+    const pbComDate = powerballComDraw.drawDate
+      ? new Date(powerballComDraw.drawDate).toISOString().split("T")[0]
+      : null;
+
+    // Find the latest draw from JSON
+    const latestJsonDraw = draws.length > 0 ? draws[0] : null;
+    const latestJsonDate = latestJsonDraw?.drawDate
+      ? new Date(latestJsonDraw.drawDate).toISOString().split("T")[0]
+      : null;
+
+    // Check if powerball.com has a newer draw
+    const isNewer =
+      !latestJsonDate ||
+      (pbComDate && pbComDate > latestJsonDate) ||
+      (pbComDate === latestJsonDate &&
+        // Compare numbers to see if they're different (in case same date but updated)
+        (!latestJsonDraw ||
+          JSON.stringify(latestJsonDraw.main?.sort()) !==
+            JSON.stringify(powerballComDraw.main.sort()) ||
+          latestJsonDraw.powerball !== powerballComDraw.powerball));
+
+    if (isNewer) {
+      // Prepend the powerball.com draw to the beginning of the draws array
+      draws = [
+        {
+          drawDate: powerballComDraw.drawDate,
+          main: powerballComDraw.main,
+          powerball: powerballComDraw.powerball,
+          multiplier: powerballComDraw.multiplier,
+        },
+        ...draws,
+      ];
+    }
+  }
 
   const newEtag = res.headers.get("ETag");
   const now = new Date().toISOString();
 
-  // Find the latest draw
+  // Find the latest draw (after potentially adding powerball.com draw)
   const latestDraw = draws.length > 0 ? draws[0] : null;
   const latestDrawDate = latestDraw?.drawDate
     ? new Date(latestDraw.drawDate).toISOString().split("T")[0]
