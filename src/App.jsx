@@ -70,6 +70,7 @@ const PowerballGenerator = () => {
       try {
         const res = await fetch("/api/powerball/draws", {
           headers: { Accept: "application/json" },
+          cache: "no-store", // Don't cache - always get fresh data
         });
         if (!res.ok) return;
 

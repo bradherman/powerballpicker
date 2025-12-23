@@ -115,18 +115,56 @@ async function fetchLatestDrawFromPowerballCom(env) {
       const dateMatch = section.match(/title-date[^>]*>([^<]+)</i);
       if (dateMatch) {
         const dateStr = dateMatch[1].trim();
+        // Try parsing the date - powerball.com uses format like "Mon, Dec 22, 2025"
         const parsed = new Date(dateStr);
         if (Number.isFinite(parsed.getTime())) {
           drawDate = parsed.toISOString();
+        } else {
+          // Fallback: try to parse manually if standard Date parsing fails
+          // Format: "Mon, Dec 22, 2025" or "Monday, December 22, 2025"
+          const monthMap = {
+            jan: 0,
+            feb: 1,
+            mar: 2,
+            apr: 3,
+            may: 4,
+            jun: 5,
+            jul: 6,
+            aug: 7,
+            sep: 8,
+            oct: 9,
+            nov: 10,
+            dec: 11,
+          };
+          const parts = dateStr.match(/(\w+),\s+(\w+)\s+(\d+),\s+(\d+)/i);
+          if (parts) {
+            const monthName = parts[2].toLowerCase().substring(0, 3);
+            const month = monthMap[monthName];
+            if (month !== undefined) {
+              const day = Number.parseInt(parts[3], 10);
+              const year = Number.parseInt(parts[4], 10);
+              const parsedDate = new Date(year, month, day);
+              if (Number.isFinite(parsedDate.getTime())) {
+                drawDate = parsedDate.toISOString();
+              }
+            }
+          }
         }
       }
 
       // Extract white balls (look for "white-balls" class followed by a number)
-      const whiteBallMatches = [...section.matchAll(/white-balls[^>]*>(\d{1,2})</gi)];
+      const whiteBallMatches = [
+        ...section.matchAll(/white-balls[^>]*>(\d{1,2})</gi),
+      ];
       const whiteBalls = [];
       for (const match of whiteBallMatches) {
         const num = Number.parseInt(match[1], 10);
-        if (Number.isFinite(num) && num >= 1 && num <= 69 && !whiteBalls.includes(num)) {
+        if (
+          Number.isFinite(num) &&
+          num >= 1 &&
+          num <= 69 &&
+          !whiteBalls.includes(num)
+        ) {
           whiteBalls.push(num);
         }
         if (whiteBalls.length >= 5) break;
@@ -176,7 +214,9 @@ async function fetchLatestDrawFromPowerballCom(env) {
         try {
           // Look for JSON objects that might contain draw data
           // Try to find objects with winning numbers or draw information
-          const jsonCandidates = script.match(/\{[^{}]*"winningNumbers"[^{}]*\}|\{[^{}]*"numbers"[^{}]*\}|\{[^{}]*"whiteBalls"[^{}]*\}|\{[^{}]*"drawDate"[^{}]*\}/gi);
+          const jsonCandidates = script.match(
+            /\{[^{}]*"winningNumbers"[^{}]*\}|\{[^{}]*"numbers"[^{}]*\}|\{[^{}]*"whiteBalls"[^{}]*\}|\{[^{}]*"drawDate"[^{}]*\}/gi
+          );
 
           if (jsonCandidates) {
             for (const candidate of jsonCandidates) {
@@ -214,8 +254,15 @@ async function fetchLatestDrawFromPowerballCom(env) {
                     };
 
                     // Also get date and multiplier if available
-                    if (jsonData.drawDate || jsonData.drawingDate || jsonData.date) {
-                      const dateStr = jsonData.drawDate || jsonData.drawingDate || jsonData.date;
+                    if (
+                      jsonData.drawDate ||
+                      jsonData.drawingDate ||
+                      jsonData.date
+                    ) {
+                      const dateStr =
+                        jsonData.drawDate ||
+                        jsonData.drawingDate ||
+                        jsonData.date;
                       const parsed = new Date(dateStr);
                       if (Number.isFinite(parsed.getTime())) {
                         drawDate = parsed.toISOString();
@@ -223,7 +270,9 @@ async function fetchLatestDrawFromPowerballCom(env) {
                     }
 
                     if (jsonData.multiplier || jsonData.powerPlay) {
-                      const mult = Number(jsonData.multiplier || jsonData.powerPlay);
+                      const mult = Number(
+                        jsonData.multiplier || jsonData.powerPlay
+                      );
                       if (Number.isFinite(mult) && mult >= 2) {
                         multiplier = mult;
                       }
@@ -249,7 +298,9 @@ async function fetchLatestDrawFromPowerballCom(env) {
                         if (Array.isArray(val) && val.length === 5) {
                           const nums = val
                             .map((n) => Number(n))
-                            .filter((n) => Number.isFinite(n) && n >= 1 && n <= 69);
+                            .filter(
+                              (n) => Number.isFinite(n) && n >= 1 && n <= 69
+                            );
                           if (nums.length === 5) {
                             // Look for powerball nearby
                             const pbKey = Object.keys(obj).find(
@@ -260,7 +311,12 @@ async function fetchLatestDrawFromPowerballCom(env) {
                             );
                             const pb = pbKey ? Number(obj[pbKey]) : null;
 
-                            if (pb != null && Number.isFinite(pb) && pb >= 1 && pb <= 26) {
+                            if (
+                              pb != null &&
+                              Number.isFinite(pb) &&
+                              pb >= 1 &&
+                              pb <= 26
+                            ) {
                               return { main: nums, powerball: pb };
                             }
                           }
@@ -318,7 +374,8 @@ async function fetchLatestDrawFromPowerballCom(env) {
     // Fallback: Try to find numbers in HTML text patterns
     if (!winningNumbers) {
       // Look for patterns like "12 34 56 78 90 26" where first 5 are 1-69 and last is 1-26
-      const numberPattern = /(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})/g;
+      const numberPattern =
+        /(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})/g;
       let match;
       while ((match = numberPattern.exec(html)) !== null) {
         const nums = match.slice(1, 7).map((n) => Number.parseInt(n, 10));
@@ -334,7 +391,10 @@ async function fetchLatestDrawFromPowerballCom(env) {
         ) {
           // Check if this appears near "winning" or "numbers" text
           const contextStart = Math.max(0, match.index - 200);
-          const contextEnd = Math.min(html.length, match.index + match[0].length + 200);
+          const contextEnd = Math.min(
+            html.length,
+            match.index + match[0].length + 200
+          );
           const context = html.slice(contextStart, contextEnd).toLowerCase();
 
           if (
@@ -539,28 +599,35 @@ async function syncLatestDraws(env) {
     cf: { cacheTtl: 0, cacheEverything: false },
   });
 
+  let draws = [];
+  let jsonUpdated = false;
+
   if (res.status === 304) {
-    await env.POWERBALL_KV.put(
-      KV_META_KEY,
-      JSON.stringify({
-        ...existingMeta,
-        lastCheckedAt: new Date().toISOString(),
-      })
-    );
-    return { updated: false };
+    // JSON hasn't changed, but we still need to check powerball.com for newer results
+    // Load existing draws from KV
+    const stored = await env.POWERBALL_KV.get(KV_DRAWS_KEY, "json");
+    if (stored?.draws) {
+      draws = stored.draws;
+    }
+    jsonUpdated = false;
+  } else {
+    if (!res.ok) {
+      throw new Error(`Upstream fetch failed: ${res.status} ${res.statusText}`);
+    }
+
+    const payload = await res.json();
+    draws = normalizeSocrataRowsJson(payload);
+    jsonUpdated = true;
   }
 
-  if (!res.ok) {
-    throw new Error(`Upstream fetch failed: ${res.status} ${res.statusText}`);
-  }
-
-  const payload = await res.json();
-  let draws = normalizeSocrataRowsJson(payload);
-
-  // Try to fetch the latest draw from powerball.com
+  // Always try to fetch the latest draw from powerball.com (even if JSON didn't update)
   const powerballComDraw = await fetchLatestDrawFromPowerballCom(env);
 
-  if (powerballComDraw && powerballComDraw.main && powerballComDraw.main.length === 5) {
+  if (
+    powerballComDraw &&
+    powerballComDraw.main &&
+    powerballComDraw.main.length === 5
+  ) {
     const pbComDate = powerballComDraw.drawDate
       ? new Date(powerballComDraw.drawDate).toISOString().split("T")[0]
       : null;
@@ -596,8 +663,53 @@ async function syncLatestDraws(env) {
     }
   }
 
-  const newEtag = res.headers.get("ETag");
+  const newEtag = jsonUpdated ? res.headers.get("ETag") : existingMeta?.etag;
   const now = new Date().toISOString();
+
+  // Track if we actually updated anything
+  let wasUpdated = jsonUpdated;
+
+  // Find the latest draw from JSON (before potentially adding powerball.com)
+  const latestJsonDrawBefore = draws.length > 0 ? draws[0] : null;
+  const latestJsonDateBefore = latestJsonDrawBefore?.drawDate
+    ? new Date(latestJsonDrawBefore.drawDate).toISOString().split("T")[0]
+    : null;
+
+  // Check if powerball.com has newer data
+  if (
+    powerballComDraw &&
+    powerballComDraw.main &&
+    powerballComDraw.main.length === 5
+  ) {
+    const pbComDate = powerballComDraw.drawDate
+      ? new Date(powerballComDraw.drawDate).toISOString().split("T")[0]
+      : null;
+
+    // Check if powerball.com has a newer draw
+    const isNewer =
+      !latestJsonDateBefore ||
+      (pbComDate && pbComDate > latestJsonDateBefore) ||
+      (pbComDate === latestJsonDateBefore &&
+        // Compare numbers to see if they're different (in case same date but updated)
+        (!latestJsonDrawBefore ||
+          JSON.stringify(latestJsonDrawBefore.main?.sort()) !==
+            JSON.stringify(powerballComDraw.main.sort()) ||
+          latestJsonDrawBefore.powerball !== powerballComDraw.powerball));
+
+    if (isNewer) {
+      // Prepend the powerball.com draw to the beginning of the draws array
+      draws = [
+        {
+          drawDate: powerballComDraw.drawDate,
+          main: powerballComDraw.main,
+          powerball: powerballComDraw.powerball,
+          multiplier: powerballComDraw.multiplier,
+        },
+        ...draws,
+      ];
+      wasUpdated = true; // We updated with powerball.com data
+    }
+  }
 
   // Find the latest draw (after potentially adding powerball.com draw)
   const latestDraw = draws.length > 0 ? draws[0] : null;
@@ -620,27 +732,40 @@ async function syncLatestDraws(env) {
     }
   }
 
-  await env.POWERBALL_KV.put(
-    KV_DRAWS_KEY,
-    JSON.stringify({ draws, updatedAt: now })
-  );
-  await env.POWERBALL_KV.put(
-    KV_META_KEY,
-    JSON.stringify({
-      etag: newEtag,
-      updatedAt: now,
-      lastCheckedAt: now,
-      sourceUrl,
-      drawCount: draws.length,
-      lastDrawDate: latestDrawDate,
-    })
-  );
+  // Only update KV if we actually have changes
+  if (wasUpdated || latestDrawDate !== lastDrawDate) {
+    await env.POWERBALL_KV.put(
+      KV_DRAWS_KEY,
+      JSON.stringify({ draws, updatedAt: now })
+    );
+    await env.POWERBALL_KV.put(
+      KV_META_KEY,
+      JSON.stringify({
+        etag: newEtag,
+        updatedAt: now,
+        lastCheckedAt: now,
+        sourceUrl,
+        drawCount: draws.length,
+        lastDrawDate: latestDrawDate,
+      })
+    );
+  } else {
+    // Still update lastCheckedAt even if nothing changed
+    await env.POWERBALL_KV.put(
+      KV_META_KEY,
+      JSON.stringify({
+        ...existingMeta,
+        lastCheckedAt: now,
+      })
+    );
+  }
 
   return {
-    updated: true,
+    updated: wasUpdated,
     drawCount: draws.length,
     winningsChecked: winningsResult !== null,
     winnings: winningsResult,
+    powerballComChecked: powerballComDraw !== null,
   };
 }
 
@@ -1186,7 +1311,10 @@ export default {
     }
 
     // Test endpoint to debug powerball.com parsing
-    if (request.method === "GET" && url.pathname === "/api/powerball/test-parse") {
+    if (
+      request.method === "GET" &&
+      url.pathname === "/api/powerball/test-parse"
+    ) {
       try {
         // Enable debug mode
         const debugEnv = { ...env, DEBUG_PARSING: true };
